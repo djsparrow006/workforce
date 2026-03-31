@@ -691,6 +691,28 @@ if (btnCheckOut) {
 }
 
 
+// Expense Claim Submission
+const expenseF = safeSelect('expense-form');
+if (expenseF) {
+    expenseF.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const amount = safeSelect('expense-amount').value;
+        const description = safeSelect('expense-desc').value;
+        
+        const body = { amount: parseFloat(amount), description };
+        
+        const res = await apiCall('/expense/submit', 'POST', body);
+        if (res.ok) {
+            alert('Expense claim submitted successfully!');
+            expenseF.reset();
+            fetchExpenseData(); // Refresh history
+        } else {
+            const data = await res.json();
+            alert('Error submitting claim: ' + (data.msg || 'Unknown error'));
+        }
+    });
+}
+
 // User Management
 const addUserF = safeSelect('add-user-form');
 if (addUserF) {
