@@ -36,6 +36,12 @@ def get_all_employee_details():
             Order.completed_at >= datetime.combine(today, datetime.min.time())
         ).count()
         
+        # Online status: Checked in today AND hasn't checked out yet
+        is_online = bool(attendance and not attendance.check_out)
+        
+        # Pending assigned orders
+        assigned_count = Order.query.filter_by(user_id=emp.id, status='assigned').count()
+        
         results.append({
             'user_id': emp.id,
             'name': emp.name,
@@ -43,6 +49,8 @@ def get_all_employee_details():
             'last_lat': attendance.latitude if attendance else None,
             'last_long': attendance.longitude if attendance else None,
             'orders_completed': order_count,
+            'assigned_orders': assigned_count,
+            'is_online': is_online,
             'leave_status': 'Present' if attendance else 'Absent'
         })
         

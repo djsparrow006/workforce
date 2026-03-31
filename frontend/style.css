@@ -369,3 +369,67 @@ body {
     70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
     100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
+
+/* Online Status Indicator */
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+    display: inline-block;
+}
+.status-dot.online { background-color: var(--accent-success); box-shadow: 0 0 8px var(--accent-success); }
+.status-dot.offline { background-color: var(--text-secondary); opacity: 0.5; }
+
+/* Compact Settings UI */
+.compact-settings {
+    background: #f1f5f9;
+    padding: 1.25rem;
+    border: 1.5px dashed var(--border-color);
+}
+.compact-settings .stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0;
+}
+.compact-settings .form-group {
+    margin-bottom: 0.5rem;
+}
+.compact-settings .form-group label {
+    font-size: 0.7rem;
+    margin-bottom: 0.25rem;
+}
+.compact-settings .form-group input {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+}
+
+/* Admin Employee List Refinement */
+.employee-status-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.employee-status-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+.employee-status-card .stat-item {
+    text-align: center;
+}
+.employee-status-card .stat-item p:last-child {
+    font-size: 0.9rem;
+}
+
+/* Modals Refinement for Assignment */
+#assign-modal .modal-content {
+    border-top: 5px solid var(--primary-color);
+}
+#assign-modal h3 {
+    color: var(--text-primary);
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Layout Padding Fix for Nav */
+.container {
+    padding-bottom: 6rem;
+}

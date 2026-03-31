@@ -122,13 +122,15 @@ class Order(db.Model):
     __tablename__ = 'orders'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    status = db.Column(db.String(20), default='completed') # e.g. 'completed'
+    title = db.Column(db.String(200), nullable=True)
+    status = db.Column(db.String(20), default='assigned') # 'assigned', 'completed'
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     customer_lat = db.Column(db.Float, nullable=True)
     customer_long = db.Column(db.Float, nullable=True)
     distance_km = db.Column(db.Float, default=0.0)
-    completed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
 
     def to_dict(self):
         return {

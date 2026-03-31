@@ -33,6 +33,16 @@ const canvas = document.getElementById('camera-canvas');
 const btnCaptureSelfie = document.getElementById('btn-capture-selfie');
 const btnCancelCamera = document.getElementById('btn-cancel-camera');
 
+// Admin Elements
+const btnAdminLogout = document.getElementById('btn-admin-logout');
+const btnToggleSettings = document.getElementById('btn-toggle-settings');
+const settingsContainer = document.getElementById('settings-container');
+const assignModal = document.getElementById('assign-modal');
+const assignForm = document.getElementById('assign-form');
+const assignAgentName = document.getElementById('assign-agent-name');
+const btnCancelAssign = document.getElementById('btn-cancel-assign');
+let currentAssignUserId = null;
+
 // Leave & Expense
 const leaveForm = document.getElementById('leave-form');
 const leaveBalanceDisplay = document.getElementById('leave-balance-display');
@@ -116,7 +126,15 @@ function logout() {
     window.location.reload();
 }
 
-document.getElementById('btn-logout').addEventListener('click', logout);
+if (btnLogout) btnLogout.addEventListener('click', logout);
+if (btnAdminLogout) btnAdminLogout.addEventListener('click', logout);
+
+if (btnToggleSettings) {
+    btnToggleSettings.addEventListener('click', () => {
+        settingsContainer.classList.toggle('hidden');
+        btnToggleSettings.textContent = settingsContainer.classList.contains('hidden') ? 'Show Settings' : 'Hide Settings';
+    });
+}
 
 // --- Camera Logic ---
 async function startCamera() {
@@ -465,24 +483,31 @@ function renderAdminEmployeeStats(items) {
     let activeCount = 0;
 
     list.innerHTML = items.map(item => {
-        if (item.login_time) activeCount++;
+        if (item.is_online) activeCount++;
         totalOrders += item.orders_completed;
         
         const loginStr = item.login_time ? new Date(item.login_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Not Logged In';
-        const mapsLink = item.last_lat ? `<a href="https://www.google.com/maps?q=${item.last_lat},${item.last_long}" target="_blank" class="badge badge-approved" style="text-decoration:none;">📍 View on Map</a>` : '<span class="badge badge-rejected">No GPS</span>';
+        const mapsLink = item.last_lat ? `<a href="https://www.google.com/maps?q=${item.last_lat},${item.last_long}" target="_blank" class="badge badge-approved" style="text-decoration:none;">📍 Map</a>` : '';
+        const onlineStatus = item.is_online ? '<span class="status-dot online" title="Online"></span>' : '<span class="status-dot offline" title="Offline"></span>';
         
         return `
-            <div class="item-card">
+            <div class="item-card employee-status-card">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <strong>${item.name}</strong>
-                    ${mapsLink}
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        ${onlineStatus}
+                        <strong>${item.name}</strong>
+                    </div>
+                    <div style="display:flex; gap:0.4rem;">
+                        ${mapsLink}
+                        <button onclick="openAssignModal(${item.user_id}, '${item.name}')" class="badge badge-pending" style="border:none; cursor:pointer;">+ Assign</button>
+                    </div>
                 </div>
                 <div class="stat-grid" style="margin-top:0.5rem; gap:0.5rem;">
-                    <div class="stat-item" style="padding:0.5rem; background:var(--primary-light);">
-                        <p>Login</p><p style="font-size:0.8rem;">${loginStr}</p>
+                    <div class="stat-item" style="padding:0.4rem; background:var(--primary-light);">
+                        <p>Login</p><p style="font-size:0.75rem;">${loginStr}</p>
                     </div>
-                    <div class="stat-item" style="padding:0.5rem; background:var(--primary-light);">
-                        <p>Orders</p><p style="font-size:0.8rem;">${item.orders_completed}</p>
+                    <div class="stat-item" style="padding:0.4rem; background:var(--primary-light);">
+                        <p>Done/Pending</p><p style="font-size:0.75rem;">${item.orders_completed} / ${item.assigned_orders || 0}</p>
                     </div>
                 </div>
             </div>
@@ -535,8 +560,36 @@ async function updateStatus(endpoint, status, refreshScreen) {
     }
 }
 
+// --- Assignment Logic ---
+function openAssignModal(userId, userName) {
+    currentAssignUserId = userId;
+    assignAgentName.textContent = `Assigning to: ${userName}`;
+    assignModal.classList.remove('hidden');
+}
+
+btnCancelAssign.addEventListener('click', () => {
+    assignModal.classList.add('hidden');
+    assignForm.reset();
+});
+
+assignForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = document.getElementById('assign-title').value;
+    const res = await apiCall('/orders/assign', 'POST', { user_id: currentAssignUserId, title });
+    if (res.ok) {
+        alert('Order assigned successfully!');
+        assignModal.classList.add('hidden');
+        assignForm.reset();
+        fetchAdminData();
+    } else {
+        const err = await res.json();
+        alert(err.msg || 'Assignment failed');
+    }
+});
+
 // Attach to window so onclick works
 window.updateStatus = updateStatus;
+window.openAssignModal = openAssignModal;
 
 // --- Login Login ---
 loginForm.addEventListener('submit', async (e) => {

@@ -6,6 +6,34 @@ from datetime import datetime
 
 orders_bp = Blueprint('orders', __name__)
 
+@orders_bp.route('/assign', methods=['POST'])
+@jwt_required()
+def assign_order():
+    admin_id = int(get_jwt_identity())
+    admin = User.query.get(admin_id)
+    if not admin or admin.role != 'admin':
+        return jsonify({'msg': 'Admin access required'}), 403
+    
+    data = request.get_json()
+    target_user_id = data.get('user_id')
+    title = data.get('title')
+    
+    if not target_user_id or not title:
+        return jsonify({'msg': 'User ID and Title required'}), 400
+    
+    new_order = Order(
+        user_id=target_user_id,
+        title=title,
+        status='assigned'
+    )
+    db.session.add(new_order)
+    db.session.commit()
+    
+    return jsonify({
+        'msg': 'Order assigned successfully!',
+        'order': new_order.to_dict()
+    }), 201
+
 @orders_bp.route('/complete', methods=['POST'])
 @jwt_required()
 def complete_order():
@@ -33,23 +61,26 @@ def complete_order():
     office_long = float(Settings.get_val('office_long', 78.0000))
     dist_from_office = get_distance(office_lat, office_long, cust_lat, cust_long) / 1000.0 # Convert to KM
     
-    new_order = Order(
-        user_id=user_id,
-        latitude=curr_lat,
-        longitude=curr_long,
-        customer_lat=cust_lat,
-        customer_long=cust_long,
-        distance_km=round(dist_from_office, 2),
-        status='completed',
-        completed_at=datetime.utcnow()
-    )
-    db.session.add(new_order)
+    # Update existing assigned order OR create new one if none assigned
+    order = Order.query.filter_by(user_id=user_id, status='assigned').first()
+    if not order:
+        order = Order(user_id=user_id)
+        db.session.add(order)
+    
+    order.latitude = curr_lat
+    order.longitude = curr_long
+    order.customer_lat = cust_lat
+    order.customer_long = cust_long
+    order.distance_km = round(dist_from_office, 2)
+    order.status = 'completed'
+    order.completed_at = datetime.utcnow()
+    
     db.session.commit()
 
     return jsonify({
         'msg': 'Order verified and completed!',
         'distance': round(dist_from_office, 2),
-        'order': new_order.to_dict()
+        'order': order.to_dict()
     }), 201
 
 @orders_bp.route('/stats', methods=['GET'])
