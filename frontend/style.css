@@ -495,37 +495,32 @@ body {
 
 /* Active Orders & Selection */
 .active-order-card {
-    padding: 1rem;
-    border: 1.5px solid var(--border-color);
-    border-radius: 12px;
-    margin-bottom: 0.75rem;
-    transition: all 0.2s ease;
+    padding: 1.25rem;
+    border: 2px solid var(--border-color);
+    border-radius: 16px;
+    margin-bottom: 1rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     background: white;
 }
 
 .active-order-card:hover {
     border-color: var(--primary-color);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 
 .active-order-card.selected {
     border-color: var(--primary-color);
     background: var(--primary-light);
+    box-shadow: inset 0 0 0 1px var(--primary-color);
 }
 
-.active-order-card .order-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
+.active-order-card strong {
+    font-size: 1.1rem;
+    letter-spacing: -0.01em;
 }
 
-.active-order-card p {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-}
 
 .btn-select-order {
     padding: 0.4rem 0.8rem;

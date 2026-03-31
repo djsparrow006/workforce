@@ -209,12 +209,15 @@ if (btnCompleteOrder) {
     });
 }
 
-// Class-based logout for all header buttons
+// Global Logout handling for new professional buttons
 document.addEventListener('click', (e) => {
-    if (e.target.closest('.btn-logout-header')) {
+    if (e.target.closest('.btn-logout-header') || 
+        e.target.closest('#btn-logout-footer') || 
+        e.target.closest('#btn-logout-admin')) {
         logout();
     }
 });
+
 
 const btnT = safeSelect('btn-toggle-settings');
 if (btnT) {
