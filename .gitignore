@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+instance/
+.pytest_cache/
+.DS_Store
+android/app/build/
+android/.gradle/
+node_modules/
+.env
