@@ -118,3 +118,40 @@ def update_settings():
     
     db.session.commit()
     return jsonify({'msg': 'Settings updated successfully'}), 200
+
+@admin_analytics_bp.route('/create-user', methods=['POST'])
+@jwt_required()
+def create_employee():
+    try:
+        user_id = int(get_jwt_identity())
+    except (ValueError, TypeError):
+        return jsonify({'msg': 'Invalid user identity'}), 401
+        
+    admin = User.query.get(user_id)
+    if not admin or admin.role != 'admin':
+        return jsonify({'msg': 'Admin access required'}), 403
+        
+    data = request.get_json()
+    name = data.get('name')
+    email = data.get('email')
+    password = data.get('password')
+    salary = data.get('salary', 30000.0)
+    
+    if not name or not email or not password:
+        return jsonify({'msg': 'Name, Email and Password are required'}), 400
+        
+    if User.query.filter_by(email=email).first():
+        return jsonify({'msg': 'User with this email already exists'}), 400
+        
+    new_user = User(
+        name=name,
+        email=email,
+        role='employee',
+        salary=float(salary)
+    )
+    new_user.set_password(password)
+    
+    db.session.add(new_user)
+    db.session.commit()
+    
+    return jsonify({'msg': f'Employee {name} created successfully', 'user': new_user.to_dict()}), 201

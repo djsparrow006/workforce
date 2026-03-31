@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
-from backend.models import db, Order, User, Settings
+from backend.models import db, Order, User, Settings, Notification
+
 from backend.utils import get_distance
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
@@ -17,6 +18,7 @@ def assign_order():
     data = request.get_json()
     target_user_id = data.get('user_id')
     title = data.get('title')
+    address = data.get('address', '')
     
     if not target_user_id or not title:
         return jsonify({'msg': 'User ID and Title required'}), 400
@@ -24,10 +26,24 @@ def assign_order():
     new_order = Order(
         user_id=target_user_id,
         title=title,
+        address=address,
+        customer_lat=data.get('customer_lat', 14.5995), # Default to office if not set
+        customer_long=data.get('customer_long', 78.0000),
         status='assigned'
     )
+
+
     db.session.add(new_order)
+    
+    # Notify employee
+    notif = Notification(
+        user_id=target_user_id,
+        message=f'New Order Assigned: {title}. Address: {address}'
+    )
+    db.session.add(notif)
+    
     db.session.commit()
+
     
     return jsonify({
         'msg': 'Order assigned successfully!',
@@ -43,18 +59,25 @@ def complete_order():
     curr_lat = data.get('latitude')
     curr_long = data.get('longitude')
     
-    # For reliability, we need a destination. In a real app, this would be from the Order record.
-    # For this demo, we'll allow the frontend to pass the 'intended' destination or we use a default.
-    cust_lat = data.get('customer_lat', 14.6000) # Default nearby demo point
-    cust_long = data.get('customer_long', 78.0010)
+    # Get specific order if ID provided, otherwise fallback to first assigned
+    order_id = data.get('order_id')
+    if order_id:
+        order = Order.query.filter_by(id=order_id, user_id=user_id, status='assigned').first()
+    else:
+        order = Order.query.filter_by(user_id=user_id, status='assigned').first()
     
-    if not curr_lat or not curr_long:
-        return jsonify({'msg': 'GPS location required for delivery verification'}), 400
+    if not order:
+        return jsonify({'msg': 'No active assigned order found to complete.'}), 404
 
-    # 1. Geo-fencing: Must be near customer
-    dist_to_cust = get_distance(curr_lat, curr_long, cust_lat, cust_long)
-    if dist_to_cust > 500.0: # Force 500km radius for testing
-        return jsonify({'msg': f'Too far from customer ({round(dist_to_cust)}m). Move closer to complete.'}), 403
+
+    # Verification: Must be near order location (Pinned Customer Coords)
+    target_lat = order.customer_lat or 14.5995
+    target_long = order.customer_long or 78.0000
+    
+    dist_to_cust = get_distance(curr_lat, curr_long, target_lat, target_long)
+    if dist_to_cust > 20.0: # STRICT 20 METER LIMIT
+        return jsonify({'msg': f'Too far from customer ({round(dist_to_cust)}m). You must be within 20 meters to complete.'}), 403
+
 
     # 2. Distance Tracking (for Salary): Distance from Office to Customer
     office_lat = float(Settings.get_val('office_lat', 14.5995))
@@ -69,19 +92,35 @@ def complete_order():
     
     order.latitude = curr_lat
     order.longitude = curr_long
-    order.customer_lat = cust_lat
-    order.customer_long = cust_long
     order.distance_km = round(dist_from_office, 2)
+
     order.status = 'completed'
     order.completed_at = datetime.utcnow()
     
+    # Notify admin(s)
+    admins = User.query.filter_by(role='admin').all()
+    for admin in admins:
+        notif = Notification(
+            user_id=admin.id,
+            message=f'Order Completed by {User.query.get(user_id).name}: {order.title}'
+        )
+        db.session.add(notif)
+    
     db.session.commit()
-
+    
     return jsonify({
         'msg': 'Order verified and completed!',
         'distance': round(dist_from_office, 2),
         'order': order.to_dict()
     }), 201
+
+@orders_bp.route('/assigned', methods=['GET'])
+@jwt_required()
+def get_assigned_orders():
+    user_id = int(get_jwt_identity())
+    orders = Order.query.filter_by(user_id=user_id, status='assigned').all()
+    return jsonify([o.to_dict() for o in orders]), 200
+
 
 @orders_bp.route('/stats', methods=['GET'])
 @jwt_required()

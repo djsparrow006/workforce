@@ -28,6 +28,8 @@
 body {
     font-family: var(--font-family);
     background-color: var(--bg-color);
+
+
     color: var(--text-primary);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -120,9 +122,11 @@ body {
 
 /* Screen Layouts */
 .screen {
+    display: block;
     padding-bottom: 5rem;
     animation: slideIn 0.3s ease-out;
 }
+
 
 @keyframes slideIn {
     from { opacity: 0; transform: translateX(20px); }
@@ -250,6 +254,31 @@ body {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
+}
+
+.btn-logout-header {
+    background: transparent;
+    border: 1.5px solid var(--accent-danger);
+    color: var(--accent-danger);
+    padding: 0.4rem;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.btn-logout-header:hover {
+    background: var(--accent-danger);
+    color: white;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.btn-logout-header svg {
+    width: 18px;
+    height: 18px;
 }
 
 .btn-primary {
@@ -386,6 +415,7 @@ body {
     background: #f1f5f9;
     padding: 1.25rem;
     border: 1.5px dashed var(--border-color);
+    border-radius: var(--radius-md);
 }
 .compact-settings .stat-grid {
     grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
@@ -430,6 +460,125 @@ body {
 }
 
 /* Layout Padding Fix for Nav */
-.container {
-    padding-bottom: 6rem;
+/* Admin UI Enhancements */
+.config-card {
+    border-left: 4px solid var(--primary-color);
 }
+.logout-card:hover {
+    background: #fff0f0 !important;
+}
+.history-section h3 {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.history-section h3::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-color);
+}
+#admin-screen .header h2 {
+    font-size: 1.5rem;
+    background: linear-gradient(90deg, var(--primary-color), #3b82f6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+#debug-overlay div { margin-bottom: 2px; }
+
+/* Active Orders & Selection */
+.active-order-card {
+    padding: 1rem;
+    border: 1.5px solid var(--border-color);
+    border-radius: 12px;
+    margin-bottom: 0.75rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    background: white;
+}
+
+.active-order-card:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.active-order-card.selected {
+    border-color: var(--primary-color);
+    background: var(--primary-light);
+}
+
+.active-order-card .order-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.active-order-card p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.btn-select-order {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.75rem;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+/* Notifications */
+.notifications-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.notif-item {
+    background: white;
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--primary-color);
+    box-shadow: var(--shadow-sm);
+    animation: fadeIn 0.3s ease-out;
+}
+
+.notif-item.unread {
+    background: var(--primary-light);
+    border-left-color: var(--accent-warning);
+}
+
+.notif-item p {
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+.notif-item .time {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+.notif-badge {
+    background: var(--accent-danger);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+}
+
+

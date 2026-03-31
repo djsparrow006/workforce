@@ -30,11 +30,12 @@ def check_in():
     if lat and lon:
         office_lat = float(Settings.get_val('office_lat', 0))
         office_long = float(Settings.get_val('office_long', 0))
-        radius = 500000 # Force 500km radius for testing
+        radius = 2000000 # Force 2000km radius for testing
         
         distance = get_distance(lat, lon, office_lat, office_long)
         if distance > radius:
-            return jsonify({'msg': f'Out of office area ({round(distance)}m). Attendance denied.'}), 403
+            return jsonify({'msg': f'Out of office area ({round(distance/1000, 1)}km). Attendance denied.'}), 403
+
 
     new_attendance = Attendance(
         user_id=user_id,

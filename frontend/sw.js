@@ -1,4 +1,4 @@
-const CACHE_NAME = 'workforce-pro-v1';
+const CACHE_NAME = 'workforce-pro-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -16,6 +16,8 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('fetch', (e) => {
   e.respondWith(
-    caches.match(e.request).then((res) => res || fetch(e.request))
+    fetch(e.request).catch(() => {
+      return caches.match(e.request);
+    })
   );
 });

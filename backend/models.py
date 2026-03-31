@@ -123,7 +123,9 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     title = db.Column(db.String(200), nullable=True)
+    address = db.Column(db.String(255), nullable=True) # Customer address
     status = db.Column(db.String(20), default='assigned') # 'assigned', 'completed'
+
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     customer_lat = db.Column(db.Float, nullable=True)
@@ -136,11 +138,31 @@ class Order(db.Model):
         return {
             'id': self.id,
             'user_id': self.user_id,
+            'title': self.title,
+            'address': self.address,
             'status': self.status,
             'latitude': self.latitude,
             'longitude': self.longitude,
             'customer_lat': self.customer_lat,
             'customer_long': self.customer_long,
             'distance_km': self.distance_km,
-            'completed_at': self.completed_at.isoformat()
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None
         }
+
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False) # Recipient
+    message = db.Column(db.String(255), nullable=False)
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'message': self.message,
+            'is_read': self.is_read,
+            'created_at': self.created_at.isoformat()
+        }
+

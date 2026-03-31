@@ -10,6 +10,7 @@ from backend.expense_management import expense_bp
 from backend.salary_engine import salary_bp
 from backend.admin_analytics import admin_analytics_bp
 from backend.orders import orders_bp
+from backend.notifications import notifications_bp
 
 def create_app():
     app = Flask(__name__)
@@ -30,6 +31,7 @@ def create_app():
     app.register_blueprint(salary_bp, url_prefix='/api/salary')
     app.register_blueprint(admin_analytics_bp, url_prefix='/api/admin')
     app.register_blueprint(orders_bp, url_prefix='/api/orders')
+    app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
     
     @app.route('/')
     def index():
@@ -65,4 +67,4 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=4000)
