@@ -72,14 +72,53 @@ def get_employee_full_history(target_user_id):
     if not user:
         return jsonify({'msg': 'User not found'}), 404
 
+    # Fetch all data to reconstruct a timeline
+    from backend.models import Break
     leaves = Leave.query.filter_by(user_id=target_user_id).all()
-    orders = Order.query.filter_by(user_id=target_user_id).limit(10).all()
+    orders = Order.query.filter_by(user_id=target_user_id).all()
+    attendances = Attendance.query.filter_by(user_id=target_user_id).all()
+    breaks = Break.query.filter_by(user_id=target_user_id).all()
     
     return jsonify({
-        'user': user.to_dict(),
+        'user': user.to_dict(), # Contains created_at
         'leaves': [l.to_dict() for l in leaves],
-        'orders': [o.to_dict() for o in orders]
+        'orders': [o.to_dict() for o in orders],
+        'attendances': [a.to_dict() for a in attendances],
+        'breaks': [b.to_dict() for b in breaks]
     }), 200
+
+@admin_analytics_bp.route('/remove-user/<int:target_user_id>', methods=['DELETE'])
+@jwt_required()
+def remove_employee(target_user_id):
+    try:
+        user_id = int(get_jwt_identity())
+    except (ValueError, TypeError):
+        return jsonify({'msg': 'Invalid user identity'}), 401
+        
+    admin = User.query.get(user_id)
+    if not admin or admin.role != 'admin':
+        return jsonify({'msg': 'Admin access required'}), 403
+        
+    target_user = User.query.get(target_user_id)
+    if not target_user:
+        return jsonify({'msg': 'User not found'}), 404
+        
+    if target_user.role == 'admin':
+        return jsonify({'msg': 'Cannot remove other admins'}), 400
+        
+    # Delete related records safely (Manual Cascade)
+    from backend.models import Attendance, Leave, Expense, Order, Break, Notification
+    Attendance.query.filter_by(user_id=target_user_id).delete()
+    Leave.query.filter_by(user_id=target_user_id).delete()
+    Expense.query.filter_by(user_id=target_user_id).delete()
+    Order.query.filter_by(user_id=target_user_id).delete()
+    Break.query.filter_by(user_id=target_user_id).delete()
+    Notification.query.filter_by(user_id=target_user_id).delete()
+
+    db.session.delete(target_user)
+    db.session.commit()
+    
+    return jsonify({'msg': 'Employee removed successfully'}), 200
 
 @admin_analytics_bp.route('/settings', methods=['GET'])
 @jwt_required()

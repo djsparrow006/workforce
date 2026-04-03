@@ -1,6 +1,5 @@
-// Workforce Pro App v2.1 - Emergency Navigation Fix
-const BASE_URL = (window.location.hostname.includes('192.168.1.4') || window.location.protocol === 'capacitor:') 
-    ? 'http://192.168.1.4:5000/api' 
+const BASE_URL = (window.location.protocol === 'capacitor:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? (window.location.protocol === 'capacitor:' ? 'http://localhost:5000/api' : '/api')
     : '/api';
 
 let authToken = localStorage.getItem('authToken');
@@ -8,7 +7,7 @@ let userData = null;
 try {
     userData = JSON.parse(localStorage.getItem('userData'));
 } catch (e) {
-    console.warn("User data invalid", e);
+    // Silent fail if no data
 }
 
 let currentAssignUserId = null;
@@ -18,13 +17,19 @@ let selectedUserId = null; // for admin assignment popup
 let selectedOrderId = null; // for employee delivery
 let targetCoords = { lat: 0, lng: 0 };
 
+// Break & Order Workflow State
+let currentOrderId = null;
+let currentOrderStatus = null;  // 'assigned', 'arrived_at_store', 'picked_up', 'delivered'
+let isOnBreak = false;
+let activeBreakStartTime = null;
+let breakType = null;
+
 
 
 // Helper to safely select elements
 function safeSelect(id) {
     const el = document.getElementById(id);
     if (!el) {
-        console.warn(`Element '${id}' not found`);
     }
     return el;
 }
@@ -74,9 +79,13 @@ function switchScreen(screenKey) {
     // Refresh Data
     try {
         if (screenKey === 'home') {
-            fetchAttendanceData();
+            if (userData && userData.role === 'admin') {
+                fetchAdminData();
+            } else {
+                fetchAttendanceData();
+                fetchActiveOrders();
+            }
             fetchNotifications();
-            fetchActiveOrders();
         }
 
         else if (screenKey === 'leave') fetchLeaveData();
@@ -126,12 +135,14 @@ function showApp() {
             const el = safeSelect(id);
             if (el) el.classList.add('hidden');
         });
-        // Also hide employee actions
-        ['check-in-section', 'check-out-section'].forEach(id => {
-            const el = safeSelect(id);
-            if (el) el.classList.add('hidden');
-        });
-        switchScreen('admin');
+
+        // Admin Home vs Employee Home
+        const empHome = safeSelect('emp-home-content');
+        const adminHome = safeSelect('admin-home-content');
+        if (empHome) empHome.classList.add('hidden');
+        if (adminHome) adminHome.classList.remove('hidden');
+
+        switchScreen('home');
     } else {
 
         const navAdmin = safeSelect('nav-admin');
@@ -140,7 +151,16 @@ function showApp() {
             const el = safeSelect(id);
             if (el) el.classList.remove('hidden');
         });
+
+        // Admin Home vs Employee Home
+        const empHome = safeSelect('emp-home-content');
+        const adminHome = safeSelect('admin-home-content');
+        if (empHome) empHome.classList.remove('hidden');
+        if (adminHome) adminHome.classList.add('hidden');
+
         requestNotificationPermission(); // Ask employee for mobile notifications
+        // Initialize break UI for employees only
+        updateBreakUI();
         safeSwitch('home');
     }
 }
@@ -211,8 +231,8 @@ if (btnCompleteOrder) {
 
 // Global Logout handling for new professional buttons
 document.addEventListener('click', (e) => {
-    if (e.target.closest('.btn-logout-header') || 
-        e.target.closest('#btn-logout-footer') || 
+    if (e.target.closest('.btn-logout-header') ||
+        e.target.closest('#btn-logout-footer') ||
         e.target.closest('#btn-logout-admin')) {
         logout();
     }
@@ -228,6 +248,200 @@ if (btnT) {
             btnT.textContent = cont.classList.contains('hidden') ? 'Show Settings' : 'Hide Settings';
         }
     });
+}
+
+// ============================================================
+// ORDER WORKFLOW FUNCTIONS (NEW)
+// ============================================================
+
+async function arrivedAtStore(orderId) {
+    return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const body = {
+                order_id: orderId,
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude
+            };
+            const res = await apiCall('/orders/arrived-at-store', 'POST', body);
+            if (res.ok) {
+                const data = await res.json();
+                alert('✓ Checked in at store! Waiting for order.');
+                currentOrderId = orderId;
+                currentOrderStatus = 'arrived_at_store';
+                fetchActiveOrders();
+                resolve(data);
+            } else {
+                const err = await res.json();
+                alert('Error: ' + (err.msg || 'Check-in failed'));
+                resolve(null);
+            }
+        }, (err) => {
+            alert('Geolocation failed: ' + err.message);
+            resolve(null);
+        }, { enableHighAccuracy: true });
+    });
+}
+
+async function confirmPickup(orderId) {
+    return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const body = {
+                order_id: orderId,
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude
+            };
+            const res = await apiCall('/orders/pickup-confirm', 'POST', body);
+            if (res.ok) {
+                const data = await res.json();
+                alert('✓ Order picked up! Ready for delivery.');
+                currentOrderStatus = 'picked_up';
+                fetchActiveOrders();
+                resolve(data);
+            } else {
+                const err = await res.json();
+                alert('Error: ' + (err.msg || 'Pickup confirmation failed'));
+                resolve(null);
+            }
+        }, (err) => {
+            alert('Geolocation failed: ' + err.message);
+            resolve(null);
+        }, { enableHighAccuracy: true });
+    });
+}
+
+async function confirmDelivery(orderId) {
+    return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const body = {
+                order_id: orderId,
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude
+            };
+            const res = await apiCall('/orders/delivery-confirm', 'POST', body);
+            if (res.ok) {
+                const data = await res.json();
+                alert(`✓ Delivery confirmed! Distance: ${data.distance_km}km from office. Exact location recorded: (${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)})`);
+                currentOrderStatus = 'delivered';
+                currentOrderId = null;
+                fetchActiveOrders();
+                resolve(data);
+            } else {
+                const err = await res.json();
+                alert('Error: ' + (err.msg || 'Delivery confirmation failed'));
+                resolve(null);
+            }
+        }, (err) => {
+            alert('Geolocation failed: ' + err.message);
+            resolve(null);
+        }, { enableHighAccuracy: true });
+    });
+}
+
+function renderOrderWorkflowUI(orders, status) {
+    if (!orders || orders.length === 0) return null;
+
+    const order = orders[0];
+    let html = `
+        <div class="item-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-bottom: 1rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: white;">Current Order</h4>
+            <p style="margin: 0.25rem 0; font-size: 0.9rem;"><strong>${order.title}</strong></p>
+            <p style="margin: 0.25rem 0; font-size: 0.8rem;">📍 ${order.address}</p>
+            <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.3);">
+                <p style="margin: 0; font-size: 0.75rem; text-transform: uppercase; opacity: 0.9;">Status: ${order.status.replace(/_/g, ' ')}</p>
+            </div>
+            <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    `;
+
+    if (order.status === 'assigned') {
+        html += `<button onclick="arrivedAtStore(${order.id})" class="btn btn-primary" style="flex: 1; padding: 0.5rem; font-size: 0.8rem; min-width: 120px;">📍 Arrived at Store</button>`;
+    } else if (order.status === 'employee_arrived_at_store') {
+        html += `<button onclick="confirmPickup(${order.id})" class="btn btn-success" style="flex: 1; padding: 0.5rem; font-size: 0.8rem; min-width: 120px;">📦 Pickup Confirmed</button>`;
+    } else if (order.status === 'order_picked_up') {
+        html += `<button onclick="confirmDelivery(${order.id})" class="btn btn-primary" style="flex: 1; padding: 0.5rem; font-size: 0.8rem; min-width: 120px; background: #10b981;">✓ Delivery Completed</button>`;
+    }
+    html += `</div></div>`;
+
+    return html;
+}
+
+// ============================================================
+// BREAK MANAGEMENT FUNCTIONS (NEW)
+// ============================================================
+
+async function startBreak(breakType = 'lunch') {
+    const res = await apiCall('/attendance/break-start', 'POST', { break_type: breakType });
+    if (res.ok) {
+        const data = await res.json();
+        isOnBreak = true;
+        activeBreakStartTime = new Date();
+        breakType = data.break.break_type;
+        updateBreakUI();
+        alert(`✓ Break started: ${breakType}`);
+        return data;
+    } else {
+        const err = await res.json();
+        alert('Error: ' + (err.msg || 'Could not start break'));
+        return null;
+    }
+}
+
+async function endBreak() {
+    const res = await apiCall('/attendance/break-end', 'POST', {});
+    if (res.ok) {
+        const data = await res.json();
+        isOnBreak = false;
+        activeBreakStartTime = null;
+        alert(`✓ Break ended. Duration: ${data.break_duration_minutes} minutes`);
+        updateBreakUI();
+        return data;
+    } else {
+        const err = await res.json();
+        alert('Error: ' + (err.msg || 'Could not end break'));
+        return null;
+    }
+}
+
+function getBreakStatusBadge() {
+    if (!isOnBreak) {
+        return `<span style="background: rgba(34, 197, 94, 0.2); color: #22c55e; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">On Clock</span>`;
+    } else {
+        const elapsed = Math.floor((new Date() - activeBreakStartTime) / 60000);
+        return `<span style="background: rgba(251, 146, 60, 0.2); color: #fb923c; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">On Break (${elapsed}m)</span>`;
+    }
+}
+
+function updateBreakUI() {
+    const breakStatusEl = safeSelect('break-status-badge');
+    if (breakStatusEl) {
+        breakStatusEl.innerHTML = getBreakStatusBadge();
+    }
+
+    const breakControlsEl = safeSelect('break-controls');
+    if (breakControlsEl) {
+        if (isOnBreak) {
+            breakControlsEl.innerHTML = `
+                <button onclick="endBreak()" class="btn" style="background: #fb923c; color: white; width: 100%; padding: 0.5rem;">End Break</button>
+            `;
+        } else {
+            breakControlsEl.innerHTML = `
+                <select id="break-type-select" style="width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; border: 1.5px solid var(--border-color); border-radius: var(--radius-md);">
+                    <option value="lunch">🍽️ Lunch Break</option>
+                    <option value="rest">😴 Rest Break</option>
+                    <option value="personal">👤 Personal Break</option>
+                </select>
+                <button onclick="startBreakWithType()" class="btn btn-primary" style="width: 100%; padding: 0.5rem;">Start Break</button>
+            `;
+        }
+    }
+}
+
+function startBreakWithType() {
+    const selectEl = safeSelect('break-type-select');
+    if (selectEl) {
+        startBreak(selectEl.value);
+    } else {
+        startBreak('lunch');
+    }
 }
 
 // API Utilities
@@ -278,7 +492,7 @@ function setAttendanceUI(isCheckedIn) {
 }
 // Google Maps Integration
 window.onGoogleMapsLoaded = () => {
-    console.log("Google Maps API Loaded");
+    // Map Loaded
 };
 
 function initMap(lat, lng) {
@@ -340,11 +554,19 @@ function renderActiveOrders(orders) {
         return;
     }
 
+    // Show workflow UI if there's an active order
+    const workflowUI = renderOrderWorkflowUI(orders, orders[0]?.status);
+    const workflowContainer = safeSelect('order-workflow-container');
+    if (workflowContainer && workflowUI) {
+        workflowContainer.innerHTML = workflowUI;
+        workflowContainer.classList.remove('hidden');
+    }
+
     list.innerHTML = orders.map(order => `
         <div class="active-order-card ${selectedOrderId === order.id ? 'selected' : ''}" onclick="selectOrder(${order.id}, ${order.customer_lat}, ${order.customer_long})">
             <div class="order-header">
                 <strong>${order.title}</strong>
-                <span class="badge badge-pending">${selectedOrderId === order.id ? 'Selected' : 'Pending'}</span>
+                <span class="badge badge-${order.status === 'assigned' ? 'pending' : order.status === 'order_delivered' ? 'completed' : 'progress'}">${order.status.replace(/_/g, ' ')}</span>
             </div>
             <p>${order.address || 'No address provided'}</p>
         </div>
@@ -377,8 +599,8 @@ function renderAttendanceList(items) {
                 <p>Status: ${item.status || 'Verified'}</p>
             </div>
             <div style="text-align: right;">
-                <strong>${item.check_in ? new Date(item.check_in).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--'}</strong>
-                <p>${item.check_out ? new Date(item.check_out).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--'}</p>
+                <strong>${item.check_in ? new Date(item.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}</strong>
+                <p>${item.check_out ? new Date(item.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}</p>
             </div>
         </div>
     `).join('');
@@ -464,37 +686,233 @@ async function fetchSalaryData() {
 
 // Admin
 async function fetchAdminData() {
-    const analytics = await apiCall('/admin/employee-details');
-    if (analytics.ok) {
-        const items = await analytics.json();
-        const list = safeSelect('admin-employee-stats-list');
+    // We stick to /admin/employee-details for now as it contains necessary stats.
+    const resEmp = await apiCall('/admin/employee-details');
+    if (resEmp.ok) {
+        const items = await resEmp.json();
+
+        // Update Stats (Active Now, Orders Today)
+        const activeCount = items.filter(i => i.is_online).length;
+        const totalOrdersToday = items.reduce((sum, i) => sum + (i.orders_completed || 0), 0);
+
+        const activeEl = safeSelect('admin-home-active-count');
+        const totalEl = safeSelect('admin-home-total-orders');
+        if (activeEl) activeEl.textContent = activeCount;
+        if (totalEl) totalEl.textContent = totalOrdersToday;
+
+        const list = safeSelect('admin-home-employee-list');
         if (list) {
-            list.innerHTML = items.map(item => {
+            // Group by online status
+            const sortedItems = items.sort((a, b) => (b.is_online === a.is_online) ? 0 : b.is_online ? 1 : -1);
+
+            list.innerHTML = sortedItems.map(item => {
                 const onlineStatus = item.is_online ? '<span class="status-dot online"></span>' : '<span class="status-dot offline"></span>';
+                const statusText = item.is_online ? '<span style="color:#22c55e; font-size: 0.75rem;">Online</span>' : '<span style="color:#ef4444; font-size: 0.75rem;">Offline</span>';
+
                 return `
-                    <div class="item-card employee-status-card">
+                    <div class="item-card employee-status-card" style="cursor: pointer; border-left: 4px solid ${item.is_online ? '#22c55e' : '#ef4444'};" onclick="viewEmployeeHistory(${item.user_id}, '${item.name}')">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div>${onlineStatus} <strong>${item.name}</strong></div>
-                            <button onclick="openAssignModal(${item.user_id}, '${item.name}')" class="badge badge-pending">+ Assign</button>
+                            <div>${onlineStatus} <strong>${item.name}</strong> <span style="margin-left:0.5rem;">${statusText}</span></div>
+                            <button onclick="event.stopPropagation(); openAssignModal(${item.user_id}, '${item.name}')" class="badge badge-pending">+ Assign Order</button>
                         </div>
                         <div class="stat-grid" style="margin-top:0.5rem">
-                            <div class="stat-item"><p>Completed</p><p>${item.orders_completed}</p></div>
+                            <div class="stat-item"><p>Completed</p><p>${item.orders_completed || 0}</p></div>
                             <div class="stat-item"><p>Active</p><p style="color:var(--primary-color)">${item.assigned_orders || 0}</p></div>
                         </div>
                     </div>
                 `;
             }).join('');
         }
+
+        const updateTimeEl = safeSelect('last-update-time');
+        if (updateTimeEl) updateTimeEl.textContent = 'Updated at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-    // ...
+
+    // Fetch Pending Leaves for Admin
+    const leavesRes = await apiCall('/leave/all-pending');
+    if (leavesRes.ok) {
+        const leaves = await leavesRes.json();
+
+        const badge = safeSelect('admin-leave-badge');
+        if (badge) {
+            badge.textContent = leaves.length;
+            badge.classList.toggle('hidden', leaves.length === 0);
+        }
+
+        const list = safeSelect('admin-leave-approval-list');
+        if (list) {
+            if (leaves.length === 0) {
+                list.innerHTML = '<p class="text-center" style="font-size:0.8rem; color:var(--text-secondary);">No pending leaves</p>';
+            } else {
+                list.innerHTML = leaves.map(val => `
+                    <div class="item-card">
+                        <div style="display:flex; justify-content:space-between;">
+                            <strong>${val.user_name}</strong>
+                            <span class="badge badge-pending">${val.leave_type}</span>
+                        </div>
+                        <p style="font-size:0.8rem; margin:0.4rem 0;">${new Date(val.start_date).toLocaleDateString()} to ${new Date(val.end_date).toLocaleDateString()}</p>
+                        <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom: 0.5rem;">${val.reason}</p>
+                        <div style="display:flex; gap: 0.5rem;">
+                            <button onclick="approveLeave(${val.id}, 'approved')" class="btn btn-success" style="flex:1; padding:0.4rem; font-size:0.75rem;">Approve</button>
+                            <button onclick="approveLeave(${val.id}, 'rejected')" class="btn btn-danger" style="flex:1; padding:0.4rem; font-size:0.75rem;">Reject</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+    }
+
+    // Fetch Pending Expenses for Admin
+    const expensesRes = await apiCall('/expense/all-pending');
+    if (expensesRes.ok) {
+        const expenses = await expensesRes.json();
+
+        const badge = safeSelect('admin-expense-badge');
+        if (badge) {
+            badge.textContent = expenses.length;
+            badge.classList.toggle('hidden', expenses.length === 0);
+        }
+
+        const list = safeSelect('admin-expense-list');
+        if (list) {
+            if (expenses.length === 0) {
+                list.innerHTML = '<p class="text-center" style="font-size:0.8rem; color:var(--text-secondary);">No pending expenses</p>';
+            } else {
+                list.innerHTML = expenses.map(val => `
+                    <div class="item-card">
+                        <div style="display:flex; justify-content:space-between;">
+                            <strong>${val.user_name}</strong>
+                            <strong>₹${val.amount}</strong>
+                        </div>
+                        <p style="font-size:0.8rem; margin:0.4rem 0;">${val.description}</p>
+                        <div style="display:flex; gap: 0.5rem;">
+                            <button onclick="approveExpense(${val.id}, 'approved')" class="btn btn-success" style="flex:1; padding:0.4rem; font-size:0.75rem;">Approve</button>
+                            <button onclick="approveExpense(${val.id}, 'rejected')" class="btn btn-danger" style="flex:1; padding:0.4rem; font-size:0.75rem;">Reject</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+    }
 }
+
+// Global variable for tracking the modal's employee ID
+let currentHistUserId = null;
+
+async function approveLeave(id, status) {
+    if (!confirm(`Are you sure you want to ${status} this leave?`)) return;
+    const res = await apiCall(`/leave/approve/${id}`, 'POST', { status });
+    if (res.ok) {
+        alert(`Leave ${status} successfully.`);
+        fetchAdminData();
+    } else {
+        alert('Failed to update leave request.');
+    }
+}
+
+async function approveExpense(id, status) {
+    if (!confirm(`Are you sure you want to ${status} this expense?`)) return;
+    const res = await apiCall(`/expense/approve/${id}`, 'POST', { status });
+    if (res.ok) {
+        alert(`Expense ${status} successfully.`);
+        fetchAdminData();
+    } else {
+        alert('Failed to update expense claim.');
+    }
+}
+
+async function viewEmployeeHistory(id, name) {
+    currentHistUserId = id;
+    const res = await apiCall(`/admin/employee/${id}/history`);
+    if (res.ok) {
+        const data = await res.json();
+        const modal = safeSelect('employee-details-modal');
+        const nameEl = safeSelect('hist-emp-name');
+        const joinedEl = safeSelect('hist-emp-joined');
+        const timeline = safeSelect('hist-timeline-list');
+
+        nameEl.textContent = name;
+        joinedEl.textContent = `Joined: ${new Date(data.user.created_at).toLocaleDateString()}`;
+
+        // Build timeline
+        let events = [];
+
+        data.attendances.forEach(a => {
+            events.push({ time: new Date(a.check_in), label: 'Checked In', type: 'attendance', detail: a.office_name });
+            if (a.check_out) events.push({ time: new Date(a.check_out), label: 'Checked Out', type: 'attendance', detail: '' });
+        });
+
+        data.breaks.forEach(b => {
+            events.push({ time: new Date(b.start_time), label: `Started Break (${b.break_type})`, type: 'break', detail: '' });
+            if (b.end_time) events.push({ time: new Date(b.end_time), label: `Ended Break`, type: 'break', detail: `${b.duration_minutes} min` });
+        });
+
+        data.orders.forEach(o => {
+            if (o.assigned_at) events.push({ time: new Date(o.assigned_at), label: 'Order Assigned', type: 'order', detail: o.title });
+            if (o.completed_at) events.push({ time: new Date(o.completed_at), label: 'Order Delivered', type: 'order', detail: `Dist: ${o.distance_km}km` });
+        });
+
+        // Sort descending
+        events.sort((a, b) => b.time - a.time);
+
+        if (events.length === 0) {
+            timeline.innerHTML = '<p style="text-align:center; font-size:0.8rem; color:var(--text-secondary);">No activity found</p>';
+        } else {
+            timeline.innerHTML = events.map(e => `
+                <div style="padding-left: 1rem; border-left: 2px solid var(--border-color); position: relative;">
+                    <div style="position: absolute; left: -5px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--primary-color);"></div>
+                    <p style="margin: 0; font-size: 0.75rem; color: var(--text-secondary);">${e.time.toLocaleDateString()} ${e.time.toLocaleTimeString()}</p>
+                    <p style="margin: 0.2rem 0; font-weight: 500;">${e.label}</p>
+                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-secondary);">${e.detail}</p>
+                </div>
+            `).join('');
+        }
+
+        modal.classList.remove('hidden');
+    } else {
+        alert("Failed to load employee history.");
+    }
+}
+
+const btnCloseHist = safeSelect('btn-close-hist-modal');
+if (btnCloseHist) {
+    btnCloseHist.addEventListener('click', () => {
+        safeSelect('employee-details-modal').classList.add('hidden');
+    });
+}
+
+const btnHistAssign = safeSelect('btn-hist-assign');
+if (btnHistAssign) {
+    btnHistAssign.addEventListener('click', () => {
+        safeSelect('employee-details-modal').classList.add('hidden');
+        openAssignModal(currentHistUserId, safeSelect('hist-emp-name').textContent);
+    });
+}
+
+const btnHistRemove = safeSelect('btn-hist-remove');
+if (btnHistRemove) {
+    btnHistRemove.addEventListener('click', async () => {
+        if (!confirm("Are you absolutely sure you want to remove this employee? This action cannot be undone.")) return;
+
+        const res = await apiCall(`/admin/remove-user/${currentHistUserId}`, 'DELETE');
+        if (res.ok) {
+            alert('Employee removed permanently.');
+            safeSelect('employee-details-modal').classList.add('hidden');
+            fetchAdminData();
+        } else {
+            const d = await res.json();
+            alert(d.msg || 'Removal failed');
+        }
+    });
+}
+
 
 // Notifications Logic
 async function fetchNotifications() {
     const res = await apiCall('/notifications');
     if (res.ok) {
         const data = await res.json();
-        
+
         // Admin View: Detailed List & Badge
         if (userData && userData.role === 'admin') {
             renderNotifications(data, 'notifications-list-admin');
@@ -503,8 +921,8 @@ async function fetchNotifications() {
                 badge.textContent = data.length;
                 badge.classList.toggle('hidden', data.length === 0);
             }
-        } 
-        
+        }
+
         // Employee View: System-Level Push Notification
         else {
             if (data.length > 0) {
@@ -537,7 +955,7 @@ function renderNotifications(items, listId) {
     list.innerHTML = items.slice(0, 5).map(item => `
         <div class="notif-item ${item.is_read ? '' : 'unread'}">
             <p>${item.message}</p>
-            <div class="time">${new Date(item.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+            <div class="time">${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
         </div>
     `).join('');
 }
@@ -654,7 +1072,7 @@ if (btnCaptureS) {
                     const d = await res.json();
                     alert(d.msg || 'Check-In failed');
                 }
-                
+
                 resetCaptureButton();
             }, (err) => {
                 alert("Geolocation failed: " + err.message);
@@ -681,7 +1099,7 @@ const btnCheckOut = safeSelect('btn-check-out');
 if (btnCheckOut) {
     btnCheckOut.addEventListener('click', async () => {
         if (!confirm('Are you sure you want to check out?')) return;
-        
+
         const res = await apiCall('/attendance/check-out', 'POST');
         if (res.ok) {
             alert('Checked Out successfully!');
@@ -691,6 +1109,30 @@ if (btnCheckOut) {
 }
 
 
+// Leave Submission Logic
+const leaveF = safeSelect('leave-form');
+if (leaveF) {
+    leaveF.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const leave_type = safeSelect('leave-type').value;
+        const start_date = safeSelect('leave-start').value;
+        const end_date = safeSelect('leave-end').value;
+        const reason = safeSelect('leave-reason').value;
+
+        const body = { leave_type, start_date, end_date, reason };
+        const res = await apiCall('/leave/apply', 'POST', body);
+
+        if (res.ok) {
+            alert('Leave application submitted successfully!');
+            leaveF.reset();
+            fetchLeaveData(); // Refresh history
+        } else {
+            const data = await res.json();
+            alert('Error submitting leave: ' + (data.msg || 'Unknown error'));
+        }
+    });
+}
+
 // Expense Claim Submission
 const expenseF = safeSelect('expense-form');
 if (expenseF) {
@@ -698,9 +1140,9 @@ if (expenseF) {
         e.preventDefault();
         const amount = safeSelect('expense-amount').value;
         const description = safeSelect('expense-desc').value;
-        
+
         const body = { amount: parseFloat(amount), description };
-        
+
         const res = await apiCall('/expense/submit', 'POST', body);
         if (res.ok) {
             alert('Expense claim submitted successfully!');
@@ -767,19 +1209,43 @@ if (loginF) loginF.addEventListener('submit', async (e) => {
 // Clock
 setInterval(() => {
     const timeEl = safeSelect('current-time');
-    if (timeEl) timeEl.textContent = new Date().toLocaleTimeString([], {hour12: false});
+    if (timeEl) timeEl.textContent = new Date().toLocaleTimeString([], { hour12: false });
 }, 1000);
 
 // Set Globals
 window.openAssignModal = openAssignModal;
 
-console.log("Workforce Pro App v2.1 Loaded");
+// Workforce Pro App Ready
 
 // Initial Navigation - Moved to end to avoid TDZ errors
 if (authToken && userData) {
     showApp();
-    // Start Polling for Notifications
-    setInterval(fetchNotifications, 15000); // Every 15 seconds
+    // Fast Polling for Data Sync
+    setInterval(() => {
+        fetchNotifications();
+        if (userData && userData.role === 'admin') {
+            const adminScreen = safeSelect('admin-screen');
+            if (adminScreen && !adminScreen.classList.contains('hidden')) {
+                fetchAdminData(); // Keep admin dashboard actively synced
+            }
+        } else {
+            const homeScreen = safeSelect('home-screen');
+            if (homeScreen && !homeScreen.classList.contains('hidden')) {
+                fetchActiveOrders(); // Keep employee workspace actively synced
+            }
+
+            // Poll active extraneous screens for dynamic approval updates
+            const leaveScreen = safeSelect('leave-screen');
+            if (leaveScreen && !leaveScreen.classList.contains('hidden')) {
+                fetchLeaveData();
+            }
+
+            const expenseScreen = safeSelect('expense-screen');
+            if (expenseScreen && !expenseScreen.classList.contains('hidden')) {
+                fetchExpenseData();
+            }
+        }
+    }, 5000); // Poll every 5 seconds for responsive sync
 }
 
 

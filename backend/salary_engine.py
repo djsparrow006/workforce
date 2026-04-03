@@ -20,11 +20,15 @@ def get_salary_summary():
     month_end = datetime(now.year, now.month, last_day, 23, 59, 59)
 
     # 1. Attendance & Leaves
-    attendance_count = Attendance.query.filter(
+    # Count unique days checked in
+    attendance_records = Attendance.query.filter(
         Attendance.user_id == user_id,
         Attendance.check_in >= month_start,
         Attendance.check_in <= month_end
-    ).group_by(db.func.date(Attendance.check_in)).count()
+    ).all()
+    # Get unique dates
+    unique_dates = set(a.check_in.date() for a in attendance_records)
+    attendance_count = len(unique_dates)
 
     leaves = Leave.query.filter(
         Leave.user_id == user_id,
@@ -42,7 +46,7 @@ def get_salary_summary():
     # 2. Performance Stats
     orders = Order.query.filter(
         Order.user_id == user_id,
-        Order.status == 'completed',
+        Order.status == 'order_delivered',
         Order.completed_at >= month_start,
         Order.completed_at <= month_end
     ).all()

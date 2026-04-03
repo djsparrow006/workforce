@@ -20,6 +20,7 @@ class User(db.Model):
     leaves = db.relationship('Leave', backref='user', lazy=True)
     expenses = db.relationship('Expense', backref='user', lazy=True)
     orders = db.relationship('Order', backref='user', lazy=True)
+    breaks = db.relationship('Break', backref='user', lazy=True)
 
     def set_password(self, password):
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
@@ -49,6 +50,8 @@ class Attendance(db.Model):
     selfie_url = db.Column(db.Text, nullable=True) # Use Text for base64
     status = db.Column(db.String(50), default='on_time') # 'on_time', 'late', 'early'
     office_name = db.Column(db.String(100), nullable=True)
+    is_on_break = db.Column(db.Boolean, default=False)
+    break_duration_minutes = db.Column(db.Integer, default=0)
 
     def to_dict(self):
         return {
@@ -60,7 +63,9 @@ class Attendance(db.Model):
             'longitude': self.longitude,
             'selfie_url': self.selfie_url,
             'status': self.status,
-            'office_name': self.office_name
+            'office_name': self.office_name,
+            'is_on_break': self.is_on_break,
+            'break_duration_minutes': self.break_duration_minutes
         }
 
 class Leave(db.Model):
@@ -123,15 +128,35 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     title = db.Column(db.String(200), nullable=True)
-    address = db.Column(db.String(255), nullable=True) # Customer address
-    status = db.Column(db.String(20), default='assigned') # 'assigned', 'completed'
+    address = db.Column(db.String(255), nullable=True) # Customer/delivery address
+    status = db.Column(db.String(50), default='assigned') 
+    # Status: 'assigned', 'employee_arrived_at_store', 'order_picked_up', 'order_delivered'
 
+    # Original fields (assignment location)
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     customer_lat = db.Column(db.Float, nullable=True)
     customer_long = db.Column(db.Float, nullable=True)
     distance_km = db.Column(db.Float, default=0.0)
     assigned_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # New workflow fields: Store arrival
+    store_arrival_time = db.Column(db.DateTime, nullable=True)
+    store_arrival_lat = db.Column(db.Float, nullable=True)
+    store_arrival_lng = db.Column(db.Float, nullable=True)
+    
+    # Pickup confirmation
+    pickup_time = db.Column(db.DateTime, nullable=True)
+    pickup_lat = db.Column(db.Float, nullable=True)
+    pickup_lng = db.Column(db.Float, nullable=True)
+    
+    # Delivery confirmation
+    delivery_time = db.Column(db.DateTime, nullable=True)
+    delivery_lat = db.Column(db.Float, nullable=True)
+    delivery_lng = db.Column(db.Float, nullable=True)
+    delivery_proof_url = db.Column(db.Text, nullable=True) # base64 photo/signature
+    
+    # Kept for backward compatibility
     completed_at = db.Column(db.DateTime, nullable=True)
 
     def to_dict(self):
@@ -146,6 +171,17 @@ class Order(db.Model):
             'customer_lat': self.customer_lat,
             'customer_long': self.customer_long,
             'distance_km': self.distance_km,
+            'assigned_at': self.assigned_at.isoformat() if self.assigned_at else None,
+            'store_arrival_time': self.store_arrival_time.isoformat() if self.store_arrival_time else None,
+            'store_arrival_lat': self.store_arrival_lat,
+            'store_arrival_lng': self.store_arrival_lng,
+            'pickup_time': self.pickup_time.isoformat() if self.pickup_time else None,
+            'pickup_lat': self.pickup_lat,
+            'pickup_lng': self.pickup_lng,
+            'delivery_time': self.delivery_time.isoformat() if self.delivery_time else None,
+            'delivery_lat': self.delivery_lat,
+            'delivery_lng': self.delivery_lng,
+            'delivery_proof_url': self.delivery_proof_url,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None
         }
 
@@ -164,5 +200,26 @@ class Notification(db.Model):
             'message': self.message,
             'is_read': self.is_read,
             'created_at': self.created_at.isoformat()
+        }
+
+class Break(db.Model):
+    __tablename__ = 'breaks'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    start_time = db.Column(db.DateTime, default=datetime.utcnow)
+    end_time = db.Column(db.DateTime, nullable=True)  # None if ongoing
+    duration_minutes = db.Column(db.Integer, nullable=True)  # Calculated on end
+    break_type = db.Column(db.String(50), default='lunch')  # 'lunch', 'rest', 'personal'
+    is_active = db.Column(db.Boolean, default=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'start_time': self.start_time.isoformat() if self.start_time else None,
+            'end_time': self.end_time.isoformat() if self.end_time else None,
+            'duration_minutes': self.duration_minutes,
+            'break_type': self.break_type,
+            'is_active': self.is_active
         }
 
