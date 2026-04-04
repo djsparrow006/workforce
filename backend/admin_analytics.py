@@ -194,3 +194,87 @@ def create_employee():
     db.session.commit()
     
     return jsonify({'msg': f'Employee {name} created successfully', 'user': new_user.to_dict()}), 201
+
+@admin_analytics_bp.route('/update-user/<int:target_user_id>', methods=['PUT'])
+@jwt_required()
+def update_employee(target_user_id):
+    try:
+        user_id = int(get_jwt_identity())
+    except (ValueError, TypeError):
+        return jsonify({'msg': 'Invalid user identity'}), 401
+        
+    admin = User.query.get(user_id)
+    if not admin or admin.role != 'admin':
+        return jsonify({'msg': 'Admin access required'}), 403
+        
+    target_user = User.query.get(target_user_id)
+    if not target_user:
+        return jsonify({'msg': 'User not found'}), 404
+        
+    data = request.get_json()
+    
+    if 'name' in data:
+        target_user.name = data['name']
+    if 'email' in data:
+        # Check if email is already taken by another user
+        existing_user = User.query.filter_by(email=data['email']).first()
+        if existing_user and existing_user.id != target_user_id:
+            return jsonify({'msg': 'Email already in use by another user'}), 400
+        target_user.email = data['email']
+    if 'salary' in data:
+        try:
+            target_user.salary = float(data['salary'])
+        except ValueError:
+            return jsonify({'msg': 'Invalid salary value'}), 400
+    if 'leave_balance' in data:
+        try:
+            target_user.leave_balance = int(data['leave_balance'])
+        except ValueError:
+            return jsonify({'msg': 'Invalid leave balance value'}), 400
+            
+    db.session.commit()
+    return jsonify({'msg': 'Employee updated successfully', 'user': target_user.to_dict()}), 200
+
+@admin_analytics_bp.route('/dash-stats', methods=['GET'])
+@jwt_required()
+def get_dash_stats():
+    try:
+        user_id = int(get_jwt_identity())
+    except (ValueError, TypeError):
+        return jsonify({'msg': 'Invalid user identity'}), 401
+        
+    admin = User.query.get(user_id)
+    if not admin or admin.role != 'admin':
+        return jsonify({'msg': 'Admin access required'}), 403
+        
+    today = datetime.utcnow().date()
+    today_start = datetime.combine(today, datetime.min.time())
+    
+    total_employees = User.query.filter_by(role='employee').count()
+    payroll_sum = db.session.query(db.func.sum(User.salary)).filter_by(role='employee').scalar() or 0.0
+    
+    pending_leaves = Leave.query.filter_by(status='pending').count()
+    pending_expenses = db.session.query(db.func.count(User.id)).select_from(User).join(User.expenses).filter(db.text("expenses.status = 'pending'")).scalar() or 0
+    # Correction: The relationship might be simpler or need Expense model import
+    from backend.models import Expense
+    pending_expenses = Expense.query.filter_by(status='pending').count()
+    
+    deliveries_today = Order.query.filter(Order.status == 'completed', Order.completed_at >= today_start).count()
+    assigned_pending = Order.query.filter_by(status='assigned').count()
+    
+    online_count = 0
+    employees = User.query.filter_by(role='employee').all()
+    for emp in employees:
+        attendance = Attendance.query.filter(Attendance.user_id == emp.id, Attendance.check_in >= today_start).order_by(Attendance.check_in.desc()).first()
+        if attendance and not attendance.check_out:
+            online_count += 1
+            
+    return jsonify({
+        'total_employees': total_employees,
+        'monthly_payroll': payroll_sum,
+        'online_count': online_count,
+        'pending_leaves': pending_leaves,
+        'pending_expenses': pending_expenses,
+        'deliveries_today': deliveries_today,
+        'assigned_pending': assigned_pending
+    }), 200

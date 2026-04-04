@@ -1,6 +1,6 @@
 from backend.utils import get_distance
 from flask import Blueprint, request, jsonify
-from backend.models import db, Attendance, User, Settings, Break, Notification
+from backend.models import db, Attendance, User, Settings, Break
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 
@@ -31,13 +31,13 @@ def check_in():
     lat = data.get('latitude')
     lon = data.get('longitude')
     if lat and lon:
-        office_lat = float(Settings.get_val('office_lat', 0))
-        office_long = float(Settings.get_val('office_long', 0))
-        radius = 500 # 500 meters for realistic geo-fencing
+        office_lat = float(Settings.get_val('office_lat', 14.5995))
+        office_long = float(Settings.get_val('office_long', 78.0000))
+        radius = float(Settings.get_val('office_radius_meters', 200))  # Default 200 meters
         
         distance = get_distance(lat, lon, office_lat, office_long)
         if distance > radius:
-            return jsonify({'msg': f'Out of office area ({round(distance)}m). Attendance denied.'}), 403
+            return jsonify({'msg': f'Out of office area ({round(distance/1000, 1)}km). Attendance denied.'}), 403
 
 
     new_attendance = Attendance(
@@ -50,11 +50,6 @@ def check_in():
         status='on_time'
     )
     db.session.add(new_attendance)
-    
-    admins = User.query.filter_by(role='admin').all()
-    for admin in admins:
-        db.session.add(Notification(user_id=admin.id, message=f'{user.name} checked in at {new_attendance.office_name}'))
-        
     db.session.commit()
 
     return jsonify({'msg': 'Checked in successfully', 'attendance': new_attendance.to_dict()}), 201
@@ -74,11 +69,6 @@ def check_out():
         return jsonify({'msg': 'No active check-in found'}), 404
 
     attendance.check_out = datetime.utcnow()
-    
-    admins = User.query.filter_by(role='admin').all()
-    for admin in admins:
-        db.session.add(Notification(user_id=admin.id, message=f'{user.name} checked out from {attendance.office_name}'))
-        
     db.session.commit()
 
     return jsonify({'msg': 'Checked out successfully', 'attendance': attendance.to_dict()}), 200
@@ -138,11 +128,6 @@ def break_start():
     attendance.is_on_break = True
     
     db.session.add(new_break)
-    
-    admins = User.query.filter_by(role='admin').all()
-    for admin in admins:
-        db.session.add(Notification(user_id=admin.id, message=f'{user.name} started a {break_type} break'))
-        
     db.session.commit()
     
     return jsonify({
@@ -188,10 +173,6 @@ def break_end():
         attendance.break_duration_minutes = total_break_minutes
         attendance.is_on_break = False
     
-    admins = User.query.filter_by(role='admin').all()
-    for admin in admins:
-        db.session.add(Notification(user_id=admin.id, message=f'{user.name} ended their break ({duration_minutes}m)'))
-        
     db.session.commit()
     
     return jsonify({

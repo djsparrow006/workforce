@@ -58,6 +58,12 @@
                     <h2 id="user-name">Employee Name</h2>
                 </div>
                 <div style="display:flex; align-items:center; gap: 0.75rem;">
+                    <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle Theme">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+                        </svg>
+                    </button>
                     <div id="attendance-status-badge" class="status-badge status-offline">Checked Out</div>
                 </div>
 
@@ -70,8 +76,8 @@
                     <div id="current-date" class="date-display">Monday, March 31</div>
 
                     <!-- Break Status & Controls -->
-                    <div
-                        style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1.5px solid var(--border-color);">
+                    <div class="section-gap"
+                        style="padding: 0.75rem; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
                         <div
                             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                             <p style="margin: 0; font-size: 0.8rem; color: var(--text-secondary);">Break Status</p>
@@ -81,11 +87,11 @@
                     </div>
 
                     <!-- Order Workflow UI -->
-                    <div id="order-workflow-container" class="hidden" style="margin-top: 1rem;"></div>
+                    <div id="order-workflow-container" class="hidden section-gap"></div>
 
-                    <div id="active-orders-section" class="history-section"
-                        style="margin-top: 1.5rem; border-top: 1.5px solid var(--border-color); padding-top: 1rem;">
-                        <h4 style="margin-bottom: 0.75rem; color: var(--text-primary);">Your Active Orders</h4>
+                    <div id="active-orders-section" class="history-section section-gap"
+                        style="border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
+                        <h4 style="margin-bottom: 1rem; color: var(--text-primary);">Your Active Orders</h4>
                         <div id="active-orders-list" class="notifications-container">
                             <p style="text-align:center; padding:1rem; color:var(--text-secondary); font-size:0.8rem;">
                                 No
@@ -110,7 +116,7 @@
                         </div>
                     </div>
 
-                    <div id="check-in-section">
+                    <div id="check-in-section" class="section-gap">
                         <button id="btn-show-camera" class="btn btn-success pulse">
                             <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -122,7 +128,7 @@
                         </button>
                     </div>
 
-                    <div id="check-out-section" class="hidden">
+                    <div id="check-out-section" class="hidden btn-group" style="flex-direction: column;">
                         <button id="btn-check-out" class="btn btn-danger">
                             <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -131,7 +137,7 @@
                             Check Out
                         </button>
                         <button id="btn-complete-order" class="btn btn-primary"
-                            style="margin-top: 1rem; background: var(--accent-success);">
+                            style="background: var(--accent-success);">
                             <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M5 13l4 4L19 7" />
@@ -146,31 +152,97 @@
                 </div>
             </div>
 
-            <!-- Admin Home Content -->
+            <!-- Admin Home Content (Dashboard) -->
             <div id="admin-home-content" class="hidden">
-                <div class="item-card" style="background: var(--primary-light); margin-bottom: 1.5rem;">
-                    <h3 style="color: var(--primary-color);">Operations Overview</h3>
-                    <div class="stat-grid" style="margin-top: 1rem;">
-                        <div class="stat-item">
-                            <p>Active Now</p>
-                            <p id="admin-home-active-count" style="font-size: 1.5rem;">0</p>
+                <div class="header">
+                    <h2>Workforce Overview</h2>
+                    <span id="admin-last-sync" style="font-size: 0.75rem; color: var(--text-secondary);">Sync:
+                        --:--</span>
+                </div>
+
+                <!-- Primary Metrics -->
+                <div class="stat-grid section-gap">
+                    <div class="item-card"
+                        style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border: none; padding: 1.25rem;">
+                        <p style="opacity: 0.9; font-size: 0.75rem;">Monthly Payroll</p>
+                        <h3 id="dash-total-payroll" style="font-size: 1.5rem; margin: 0.5rem 0; color: white;">₹0</h3>
+                        <div
+                            style="font-size: 0.65rem; background: rgba(255,255,255,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; display: inline-block;">
+                            Total Workforce Cost
                         </div>
-                        <div class="stat-item">
-                            <p>Orders Today</p>
-                            <p id="admin-home-total-orders" style="font-size: 1.5rem;">0</p>
+                    </div>
+                    <div class="item-card"
+                        style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 1.25rem;">
+                        <p style="opacity: 0.9; font-size: 0.75rem;">Online Today</p>
+                        <h3 id="dash-online-count" style="font-size: 1.5rem; margin: 0.5rem 0; color: white;">0</h3>
+                        <div
+                            style="font-size: 0.65rem; background: rgba(255,255,255,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; display: inline-block;">
+                            Active Agents
                         </div>
                     </div>
                 </div>
 
-                <section class="history-section">
-                    <div
-                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                        <h3 style="margin: 0;">Live Workforce Status</h3>
-                        <span id="last-update-time" style="font-size: 0.7rem; color: var(--text-secondary);">Updated
-                            just now</span>
+                <!-- Operations Tracker -->
+                <h4 class="section-gap" style="color: var(--text-primary); font-size: 0.9rem;">Operations Performance
+                </h4>
+                <div class="stat-grid">
+                    <div class="item-card"
+                        style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem; border-left: 4px solid var(--primary-color);">
+                        <div>
+                            <p style="font-size: 0.75rem; color: var(--text-secondary);">Deliveries Completed</p>
+                            <h4 id="dash-deliveries-today" style="font-size: 1.1rem; color: var(--text-primary);">0
+                                Orders</h4>
+                        </div>
+                        <div
+                            style="background: var(--bg-secondary); padding: 0.75rem; border-radius: 12px; color: var(--primary-color);">
+                            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
                     </div>
-                    <div id="admin-home-employee-list"></div>
-                </section>
+                    <div class="item-card"
+                        style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem; border-left: 4px solid var(--accent-warning);">
+                        <div>
+                            <p style="font-size: 0.75rem; color: var(--text-secondary);">Assigned & In-Progress</p>
+                            <h4 id="dash-assigned-pending" style="font-size: 1.1rem; color: var(--text-primary);">0
+                                Orders</h4>
+                        </div>
+                        <div
+                            style="background: var(--bg-secondary); padding: 0.75rem; border-radius: 12px; color: var(--accent-warning);">
+                            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Priority Attention -->
+                <h4 class="section-gap" style="color: var(--text-primary); font-size: 0.9rem;">Pending Actions</h4>
+                <div class="stat-grid">
+                    <div class="item-card" onclick="switchScreen('admin_requests')"
+                        style="cursor: pointer; text-align: center;">
+                        <p style="font-size: 0.7rem; color: var(--text-secondary);">Leave Requests</p>
+                        <h4 id="admin-dash-leaves"
+                            style="font-size: 1.1rem; color: var(--accent-warning); margin: 0.4rem 0;">0</h4>
+                        <span style="font-size: 0.6rem; color: var(--primary-color);">Review List →</span>
+                    </div>
+                    <div class="item-card" onclick="switchScreen('admin_requests')"
+                        style="cursor: pointer; text-align: center;">
+                        <p style="font-size: 0.7rem; color: var(--text-secondary);">Expense Claims</p>
+                        <h4 id="admin-dash-expenses"
+                            style="font-size: 1.1rem; color: var(--accent-danger); margin: 0.4rem 0;">0</h4>
+                        <span style="font-size: 0.6rem; color: var(--primary-color);">Review List →</span>
+                    </div>
+                </div>
+
+                <!-- Quick Management -->
+                <div class="btn-group">
+                    <button onclick="switchScreen('admin_employees')" class="btn"
+                        style="background: var(--bg-secondary); color: var(--primary-color);">Staff</button>
+                    <button onclick="switchScreen('admin_orders')" class="btn btn-primary">Orders</button>
+                </div>
             </div>
 
 
@@ -282,123 +354,165 @@
             </div>
         </section>
 
-        <!-- Admin Screen -->
-        <section id="admin-screen" class="screen hidden">
+        <!-- Admin Orders Screen -->
+        <section id="admin-orders-screen" class="screen hidden">
             <div class="header">
-                <h2>Admin Dashboard</h2>
-                <div style="display:flex; align-items:center; gap: 0.75rem;">
-                    <div id="admin-notif-badge" class="notif-badge hidden">0</div>
+                <h2>Order Assignment</h2>
+                <button class="btn" onclick="fetchAdminOrders()"
+                    style="width: auto; padding: 0.5rem; background: var(--primary-light); color: var(--primary-color);">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="item-card" style="margin-bottom: 1.5rem; background: var(--bg-secondary);">
+                <p style="font-size: 0.85rem; color: var(--text-secondary);">Select an employee from the list below to
+                    assign a new delivery order or view their current workload.</p>
+            </div>
+
+            <section class="history-section section-gap">
+                <h3 style="margin-bottom: 1rem;">Delivery Team</h3>
+                <div id="admin-orders-employee-list" class="item-list">
+                    <!-- Employees loaded via JS -->
+                </div>
+            </section>
+        </section>
+
+        <!-- Admin Requests Screen (Consolidated Leaves & Expenses) -->
+        <section id="admin-requests-screen" class="screen hidden">
+            <div class="header">
+                <h2>Pending Requests</h2>
+                <div id="admin-requests-filter" class="flex-center"
+                    style="background: var(--bg-secondary); padding: var(--spacing-xs); border-radius: var(--radius-md); gap: var(--spacing-xs);">
+                    <button id="btn-filter-leaves" class="btn active-filter"
+                        style="font-size: 0.75rem; padding: 0.4rem 0.8rem; height: auto; width: auto; background: var(--primary-color); color: white !important;">Leaves</button>
+                    <button id="btn-filter-expenses" class="btn"
+                        style="font-size: 0.75rem; padding: 0.4rem 0.8rem; height: auto; width: auto; color: var(--text-secondary);">Expenses</button>
                 </div>
             </div>
 
+            <section class="history-section">
+                <div id="admin-requests-list-container">
+                    <!-- Consolidated requests loaded via JS -->
+                </div>
+            </section>
+        </section>
+
+        <!-- Admin Employee Management Screen -->
+        <section id="admin-employees-screen" class="screen hidden">
+            <div class="header">
+                <h2>Staff Management</h2>
+                <button class="btn btn-primary" onclick="switchScreen('admin_settings')"
+                    style="width: auto; font-size: 0.75rem; padding: 0.4rem 0.8rem;">+ Add Staff</button>
+            </div>
+
+            <div class="item-card flex-center" style="padding: var(--spacing-md);">
+                <input type="text" id="employee-search" placeholder="Search staff members..."
+                    style="width: 100%; border: none; background: transparent; outline: none; font-size: 0.9rem;">
+            </div>
+
+            <section class="history-section section-gap">
+                <div id="admin-employees-list" class="item-list">
+                    <!-- Employee management cards loaded via JS -->
+                </div>
+            </section>
+        </section>
+
+        <!-- Admin Notifications Screen -->
+        <section id="admin-notifications-screen" class="screen hidden">
+            <div class="header">
+                <h2>System Alerts</h2>
+                <button id="btn-mark-all-read" class="btn"
+                    style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.75rem; background: var(--bg-secondary); color: var(--primary-color);">Mark
+                    All Read</button>
+            </div>
 
             <section class="history-section">
-                <h3>System Notifications</h3>
-                <div id="notifications-list-admin" class="notifications-container"></div>
+                <h3>Live Alerts</h3>
+                <div id="admin-notifications-list-main" class="notifications-container">
+                    <!-- Unread notifications loaded via JS -->
+                </div>
             </section>
 
+            <section class="history-section section-gap">
+                <h3>Notification History Log</h3>
+                <div id="admin-notifications-history-list" class="notifications-container" style="opacity: 0.8;">
+                    <!-- Read notifications loaded via JS -->
+                </div>
+            </section>
+        </section>
+
+        <!-- Admin Settings Screen (Replaces old Admin-Screen for common settings) -->
+        <section id="admin-settings-screen" class="screen hidden">
+            <div class="header">
+                <h2>System Settings</h2>
+            </div>
 
             <section class="history-section">
                 <div class="item-card config-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
-                        <h3 style="margin:0; font-size: 0.9rem;">System Configuration</h3>
-                        <button id="btn-toggle-settings" class="btn"
-                            style="width:auto; padding: 4px 10px; font-size: 0.65rem; background: var(--primary-light); color: var(--primary-color); border: 1px solid var(--primary-color);">Toggle
-                            Settings</button>
-                    </div>
+                    <h3 style="margin-bottom: 1.5rem; font-size: 1rem;">Global Configuration</h3>
 
-                    <div id="settings-container" class="hidden">
-                        <div class="item-card compact-settings">
-                            <div style="margin-bottom: 1.5rem;">
-                                <h4
-                                    style="font-size: 0.75rem; color: var(--primary-color); text-transform: uppercase; margin-bottom: 0.75rem;">
-                                    Office/Customer Geo-fencing</h4>
-                                <div class="stat-grid" style="margin-top:0;">
-                                    <div class="form-group">
-                                        <label>Office Lat</label>
-                                        <input type="text" id="setting-lat" placeholder="14.5995">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Office Long</label>
-                                        <input type="text" id="setting-long" placeholder="78.0000">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Radius (m)</label>
-                                        <input type="number" id="setting-radius" placeholder="200">
-                                    </div>
-                                </div>
-                                <button id="btn-save-settings" class="btn btn-primary"
-                                    style="margin-top: 0.5rem; width: auto; padding: 6px 12px; font-size: 0.75rem;">Save
-                                    Office Configuration</button>
+                    <div>
+                        <h4
+                            style="font-size: 0.75rem; color: var(--primary-color); text-transform: uppercase; margin-bottom: 1rem;">
+                            Office Geo-fencing</h4>
+                        <div class="stat-grid">
+                            <div class="form-group">
+                                <label>Latitude</label>
+                                <input type="text" id="setting-lat-main" placeholder="14.5995">
                             </div>
-
-                            <hr style="margin: 1.5rem 0; border: 0; border-top: 1px dashed var(--border-color);">
-
-                            <div>
-                                <h4
-                                    style="font-size: 0.75rem; color: var(--accent-success); text-transform: uppercase; margin-bottom: 0.75rem;">
-                                    User Management (Add Employee)</h4>
-                                <form id="add-user-form">
-                                    <div class="stat-grid"
-                                        style="grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0;">
-                                        <div class="form-group">
-                                            <label>Full Name</label>
-                                            <input type="text" id="add-user-name" placeholder="John Doe" required
-                                                style="padding:0.4rem; font-size:0.8rem;">
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Email ID</label>
-                                            <input type="email" id="add-user-email" placeholder="john@workforce.com"
-                                                required style="padding:0.4rem; font-size:0.8rem;">
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Password</label>
-                                            <input type="password" id="add-user-password" placeholder="••••••••"
-                                                required style="padding:0.4rem; font-size:0.8rem;">
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Salary (₹)</label>
-                                            <input type="number" id="add-user-salary" placeholder="30000"
-                                                style="padding:0.4rem; font-size:0.8rem;">
-                                        </div>
-                                    </div>
-                                    <button type="submit" class="btn btn-success"
-                                        style="margin-top: 0.5rem; width: auto; padding: 8px 16px; font-size: 0.8rem;">Create
-                                        Employee Account Now</button>
-                                </form>
+                            <div class="form-group">
+                                <label>Longitude</label>
+                                <input type="text" id="setting-long-main" placeholder="78.0000">
                             </div>
                         </div>
+                        <button id="btn-save-settings-main" class="btn btn-primary"
+                            style="width: auto; margin-top: 0.5rem;">Save Coordinates</button>
                     </div>
-            </section>
 
-            <section class="history-section">
-                <h3>Delivery Partners Management</h3>
-                <!-- Moved workforce status to home for Admin -->
-                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">Manage active staff,
-                    handle leaves, and approve expenses below.</p>
-            </section>
+                    <hr style="margin: 2rem 0; border: 0; border-top: 1px solid var(--border-color);">
 
-            <section class="history-section">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h3 style="margin: 0;">Pending Leave Requests</h3>
-                    <div id="admin-leave-badge" class="notif-badge hidden">0</div>
+                    <div class="section-gap">
+                        <h4
+                            style="font-size: 0.75rem; color: var(--accent-success); text-transform: uppercase; margin-bottom: 1rem;">
+                            Add New Employee</h4>
+                        <form id="add-user-form-main">
+                            <div class="stat-grid">
+                                <div class="form-group">
+                                    <label>Full Name</label>
+                                    <input type="text" id="add-user-name-main" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Email Address</label>
+                                    <input type="email" id="add-user-email-main" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Password</label>
+                                    <input type="password" id="add-user-password-main" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Salary (₹)</label>
+                                    <input type="number" id="add-user-salary-main" value="30000">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success"
+                                style="width: auto; margin-top: 0.5rem;">Create Account</button>
+                        </form>
+                    </div>
                 </div>
-                <div id="admin-leave-approval-list"></div>
-            </section>
 
-            <section class="history-section">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h3 style="margin: 0;">Pending Expense Claims</h3>
-                    <div id="admin-expense-badge" class="notif-badge hidden">0</div>
-                </div>
-                <div id="admin-expense-list"></div>
+                <button id="btn-logout-admin-settings" class="btn btn-danger"
+                    style="margin-top: 2rem; background: rgba(239, 68, 68, 0.1); color: #ef4444;">
+                    Sign Out Admin
+                </button>
             </section>
-
-            <!-- Account & Session removed from here, moved to Header -->
         </section>
 
         <!-- Navigation Bar -->
         <nav id="nav-bar" class="nav-bar hidden">
+            <!-- Common Home -->
             <div id="nav-home" class="nav-item active" data-screen="home">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -406,33 +520,69 @@
                 </svg>
                 <span>Home</span>
             </div>
-            <div id="nav-leave" class="nav-item" data-screen="leave">
+
+            <!-- Employee Only Tabs -->
+            <div id="nav-leave" class="nav-item emp-only" data-screen="leave">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 <span>Leave</span>
             </div>
-            <div id="nav-expense" class="nav-item" data-screen="expense">
+            <div id="nav-expense" class="nav-item emp-only" data-screen="expense">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <span>Expense</span>
+                <span>Expenses</span>
             </div>
-            <div id="nav-salary" class="nav-item" data-screen="salary">
+            <div id="nav-salary" class="nav-item emp-only" data-screen="salary">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span>Salary</span>
             </div>
-            <div id="nav-admin" class="nav-item hidden" data-screen="admin">
+
+            <!-- Admin Only Tabs -->
+            <div id="nav-admin-orders" class="nav-item admin-only hidden" data-screen="admin_orders">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                 </svg>
-                <span>Admin</span>
+                <span>Orders</span>
+            </div>
+            <div id="nav-admin-requests" class="nav-item admin-only hidden" data-screen="admin_requests">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>Requests</span>
+                <div id="badge-admin-requests" class="notif-badge hidden">0</div>
+            </div>
+            <div id="nav-admin-employees" class="nav-item admin-only hidden" data-screen="admin_employees">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span>Staff</span>
+            </div>
+            <div id="nav-admin-notif" class="nav-item admin-only hidden" data-screen="admin_notifications">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                <span>Alerts</span>
+                <div id="badge-admin-notif" class="notif-badge hidden">0</div>
+            </div>
+            <div id="nav-admin-settings" class="nav-item admin-only hidden" data-screen="admin_settings">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span>Settings</span>
             </div>
         </nav>
 
@@ -453,9 +603,9 @@
                             style="width: 100%; padding: 0.75rem; border: 1.5px solid var(--border-color); border-radius: var(--radius-md); font-family: inherit;"></textarea>
                     </div>
 
-                    <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                    <div class="btn-group">
                         <button type="button" id="btn-cancel-assign" class="btn"
-                            style="flex: 1; background: var(--border-color);">Cancel</button>
+                            style="background: var(--bg-secondary); color: var(--text-primary);">Cancel</button>
                         <button type="submit" class="btn btn-primary" style="flex: 2;">Confirm Assignment</button>
                     </div>
                 </form>
@@ -468,11 +618,11 @@
                 <h3 style="margin-bottom: 1rem;">Verification Selfie</h3>
                 <video id="camera-preview" autoplay playsinline></video>
                 <canvas id="camera-canvas" class="hidden"></canvas>
-                <div style="display: flex; gap: 1rem;">
-                    <button id="btn-cancel-camera" class="btn"
-                        style="flex: 1; background: var(--border-color);">Cancel</button>
+                <div class="btn-group">
                     <button id="btn-capture-selfie" class="btn btn-primary" style="flex: 2;">Take Photo & Check
                         In</button>
+                    <button id="btn-cancel-camera" class="btn"
+                        style="background: var(--bg-secondary); color: var(--text-primary);">Cancel</button>
                 </div>
             </div>
             <!-- Employee Details / History Modal -->
@@ -488,7 +638,7 @@
                             style="background: none; border: none; font-size: 1.5rem; line-height: 1; padding: 0;">&times;</button>
                     </div>
 
-                    <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+                    <div class="btn-group">
                         <button id="btn-hist-assign" class="btn btn-primary" style="flex: 1;">Assign Order</button>
                         <button id="btn-hist-remove" class="btn btn-danger" style="flex: 1;">Remove Employee</button>
                     </div>
@@ -505,6 +655,36 @@
         </div>
 
         <canvas id="camera-canvas" class="hidden"></canvas>
+
+        <!-- Edit Employee Modal -->
+        <div id="edit-employee-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <h3>Edit Employee Details</h3>
+                <form id="edit-employee-form" style="margin-top: 1rem;">
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" id="edit-emp-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email Address</label>
+                        <input type="email" id="edit-emp-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Monthly Salary (₹)</label>
+                        <input type="number" id="edit-emp-salary" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Annual Leave Balance</label>
+                        <input type="number" id="edit-emp-leave" required>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" id="btn-cancel-edit-emp" class="btn"
+                            style="background: var(--bg-secondary); color: var(--text-primary);">Cancel</button>
+                        <button type="submit" class="btn btn-primary" style="flex: 2;">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
         <!-- Using Google Maps JS API -->
         <script async

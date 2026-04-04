@@ -1,5 +1,6 @@
-const BASE_URL = (window.location.protocol === 'capacitor:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    ? (window.location.protocol === 'capacitor:' ? 'http://localhost:5000/api' : '/api')
+// Workforce Pro App v2.1 - Emergency Navigation Fix
+const BASE_URL = (window.location.hostname.includes('192.168.1.4') || window.location.protocol === 'capacitor:')
+    ? 'http://192.168.1.4:5000/api'
     : '/api';
 
 let authToken = localStorage.getItem('authToken');
@@ -7,13 +8,14 @@ let userData = null;
 try {
     userData = JSON.parse(localStorage.getItem('userData'));
 } catch (e) {
-    // Silent fail if no data
+    console.warn("User data invalid", e);
 }
 
 let currentAssignUserId = null;
 let deliveryMap = null;
 let deliveryMarker = null;
 let selectedUserId = null; // for admin assignment popup
+let isSelectedUserOnline = false; // for online check
 let selectedOrderId = null; // for employee delivery
 let targetCoords = { lat: 0, lng: 0 };
 
@@ -23,6 +25,36 @@ let currentOrderStatus = null;  // 'assigned', 'arrived_at_store', 'picked_up', 
 let isOnBreak = false;
 let activeBreakStartTime = null;
 let breakType = null;
+let currentRequestType = 'leaves'; // 'leaves' or 'expenses'
+
+// Theme Management
+function toggleTheme() {
+    const isDark = document.body.classList.toggle('dark-theme');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    updateThemeIcon(isDark);
+}
+
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+
+    if (isDark) {
+        document.body.classList.add('dark-theme');
+    } else {
+        document.body.classList.remove('dark-theme');
+    }
+    updateThemeIcon(isDark);
+}
+
+function updateThemeIcon(isDark) {
+    const btn = safeSelect('theme-toggle');
+    if (btn) {
+        btn.innerHTML = isDark
+            ? `<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg>`
+            : `<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>`;
+    }
+}
 
 
 
@@ -30,6 +62,7 @@ let breakType = null;
 function safeSelect(id) {
     const el = document.getElementById(id);
     if (!el) {
+        console.warn(`Element '${id}' not found`);
     }
     return el;
 }
@@ -44,7 +77,11 @@ const screens = {
     leave: 'leave-screen',
     expense: 'expense-screen',
     salary: 'salary-screen',
-    admin: 'admin-screen'
+    admin_orders: 'admin-orders-screen',
+    admin_requests: 'admin-requests-screen',
+    admin_employees: 'admin-employees-screen',
+    admin_notifications: 'admin-notifications-screen',
+    admin_settings: 'admin-settings-screen'
 };
 
 function switchScreen(screenKey) {
@@ -79,24 +116,25 @@ function switchScreen(screenKey) {
     // Refresh Data
     try {
         if (screenKey === 'home') {
-            if (userData && userData.role === 'admin') {
-                fetchAdminData();
-            } else {
+            if (userData && userData.role === 'admin') fetchAdminDash();
+            else {
                 fetchAttendanceData();
                 fetchActiveOrders();
             }
             fetchNotifications();
         }
-
         else if (screenKey === 'leave') fetchLeaveData();
         else if (screenKey === 'expense') fetchExpenseData();
         else if (screenKey === 'salary') fetchSalaryData();
-        else if (screenKey === 'admin') {
-            fetchAdminData();
-            fetchNotifications();
+        else if (screenKey === 'admin_orders') fetchAdminOrders();
+        else if (screenKey === 'admin_requests') {
+            currentRequestType = 'leaves'; // default
+            fetchAdminRequests();
         }
+        else if (screenKey === 'admin_employees') fetchAdminEmployees();
+        else if (screenKey === 'admin_notifications') fetchNotifications();
+        else if (screenKey === 'admin_settings') fetchAdminSettings();
     } catch (e) {
-
         console.error(`Data fetch error for ${screenKey}: ${e.message}`);
     }
 }
@@ -119,7 +157,6 @@ function safeSwitch(screenKey) {
 // App Logic
 function showApp() {
     const auth = safeSelect('auth-screen');
-
     const nav = safeSelect('nav-bar');
     if (auth) auth.classList.add('hidden');
     if (nav) nav.classList.remove('hidden');
@@ -127,39 +164,29 @@ function showApp() {
     const nameDisplay = safeSelect('user-name');
     if (nameDisplay && userData) nameDisplay.textContent = userData.name;
 
-    if (userData && userData.role === 'admin') {
+    // Reset body classes
+    document.body.classList.remove('user-role-admin', 'user-role-employee');
 
-        const navAdmin = safeSelect('nav-admin');
-        if (navAdmin) navAdmin.classList.remove('hidden');
-        ['nav-expense', 'nav-leave', 'nav-salary'].forEach(id => {
+    if (userData && userData.role === 'admin') {
+        document.body.classList.add('user-role-admin');
+
+        // Hide ALL employee-only UI elements
+        ['check-in-section', 'check-out-section', 'break-status-badge', 'break-controls', 'order-workflow-container'].forEach(id => {
             const el = safeSelect(id);
             if (el) el.classList.add('hidden');
         });
 
-        // Admin Home vs Employee Home
-        const empHome = safeSelect('emp-home-content');
-        const adminHome = safeSelect('admin-home-content');
-        if (empHome) empHome.classList.add('hidden');
-        if (adminHome) adminHome.classList.remove('hidden');
+        // Ensure all admin items are shown
+        document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+        // Ensure employee nav items are hidden
+        document.querySelectorAll('.emp-only').forEach(el => el.classList.add('hidden'));
 
-        switchScreen('home');
+        switchScreen('home'); // Now goes to home which handles Admin Dash
+        fetchAdminBadges();
     } else {
+        document.body.classList.add('user-role-employee');
 
-        const navAdmin = safeSelect('nav-admin');
-        if (navAdmin) navAdmin.classList.add('hidden');
-        ['nav-expense', 'nav-leave', 'nav-salary'].forEach(id => {
-            const el = safeSelect(id);
-            if (el) el.classList.remove('hidden');
-        });
-
-        // Admin Home vs Employee Home
-        const empHome = safeSelect('emp-home-content');
-        const adminHome = safeSelect('admin-home-content');
-        if (empHome) empHome.classList.remove('hidden');
-        if (adminHome) adminHome.classList.add('hidden');
-
-        requestNotificationPermission(); // Ask employee for mobile notifications
-        // Initialize break UI for employees only
+        requestNotificationPermission();
         updateBreakUI();
         safeSwitch('home');
     }
@@ -239,13 +266,76 @@ document.addEventListener('click', (e) => {
 });
 
 
-const btnT = safeSelect('btn-toggle-settings');
+// Updated Settings logic for new ID
+const btnT = safeSelect('btn-save-settings-main');
 if (btnT) {
-    btnT.addEventListener('click', () => {
-        const cont = safeSelect('settings-container');
-        if (cont) {
-            cont.classList.toggle('hidden');
-            btnT.textContent = cont.classList.contains('hidden') ? 'Show Settings' : 'Hide Settings';
+    btnT.addEventListener('click', async () => {
+        const latInput = safeSelect('setting-lat-main');
+        const lngInput = safeSelect('setting-long-main');
+
+        if (!latInput || !lngInput) return;
+        const lat = parseFloat(latInput.value);
+        const lng = parseFloat(lngInput.value);
+
+        if (isNaN(lat) || isNaN(lng)) {
+            alert('Please enter valid coordinates');
+            return;
+        }
+
+        const res = await apiCall('/admin/settings', 'POST', {
+            office_lat: lat.toString(),
+            office_long: lng.toString()
+        });
+        if (res.ok) alert('Settings saved!');
+        else alert('Failed to save settings');
+    });
+}
+
+async function fetchAdminSettings() {
+    const res = await apiCall('/admin/settings', 'GET');
+    if (res.ok) {
+        const settings = await res.json();
+        const latInput = safeSelect('setting-lat-main');
+        const lngInput = safeSelect('setting-long-main');
+        if (latInput) latInput.value = settings.office_lat || '14.5995';
+        if (lngInput) lngInput.value = settings.office_long || '78.0000';
+    }
+}
+
+const btnSaveSettings = safeSelect('btn-save-settings');
+if (btnSaveSettings) {
+    btnSaveSettings.addEventListener('click', async () => {
+        const latInput = safeSelect('setting-lat');
+        const lngInput = safeSelect('setting-long');
+
+        if (!latInput || !lngInput) {
+            alert('Settings inputs not found');
+            return;
+        }
+
+        const lat = parseFloat(latInput.value);
+        const lng = parseFloat(lngInput.value);
+
+        if (isNaN(lat) || isNaN(lng)) {
+            alert('Please enter valid latitude and longitude values');
+            return;
+        }
+
+        const settings = {
+            office_lat: lat.toString(),
+            office_long: lng.toString()
+        };
+
+        try {
+            const res = await apiCall('/admin/settings', 'POST', settings);
+            if (res.ok) {
+                alert('Office coordinates updated successfully!');
+            } else {
+                const err = await res.json();
+                alert('Error updating settings: ' + (err.msg || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Network error: ' + error.message);
         }
     });
 }
@@ -341,7 +431,7 @@ function renderOrderWorkflowUI(orders, status) {
     if (!orders || orders.length === 0) return null;
 
     const order = orders[0];
-    let html = `
+    const html = `
         <div class="item-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-bottom: 1rem;">
             <h4 style="margin: 0 0 0.5rem 0; color: white;">Current Order</h4>
             <p style="margin: 0.25rem 0; font-size: 0.9rem;"><strong>${order.title}</strong></p>
@@ -492,7 +582,7 @@ function setAttendanceUI(isCheckedIn) {
 }
 // Google Maps Integration
 window.onGoogleMapsLoaded = () => {
-    // Map Loaded
+    console.log("Google Maps API Loaded");
 };
 
 function initMap(lat, lng) {
@@ -685,227 +775,322 @@ async function fetchSalaryData() {
 
 
 // Admin
-async function fetchAdminData() {
-    // We stick to /admin/employee-details for now as it contains necessary stats.
-    const resEmp = await apiCall('/admin/employee-details');
-    if (resEmp.ok) {
-        const items = await resEmp.json();
+// ============================================================
+// ADMIN SEGREGATED FUNCTIONS (NEW)
+// ============================================================
 
-        // Update Stats (Active Now, Orders Today)
-        const activeCount = items.filter(i => i.is_online).length;
-        const totalOrdersToday = items.reduce((sum, i) => sum + (i.orders_completed || 0), 0);
+async function fetchAdminDash() {
+    const adminCont = safeSelect('admin-home-content');
+    const empCont = safeSelect('employee-home-content');
+    if (adminCont) adminCont.classList.remove('hidden');
+    if (empCont) empCont.classList.add('hidden');
 
-        const activeEl = safeSelect('admin-home-active-count');
-        const totalEl = safeSelect('admin-home-total-orders');
-        if (activeEl) activeEl.textContent = activeCount;
-        if (totalEl) totalEl.textContent = totalOrdersToday;
+    const res = await apiCall('/admin/dash-stats');
+    if (res.ok) {
+        const stats = await res.json();
 
-        const list = safeSelect('admin-home-employee-list');
-        if (list) {
-            // Group by online status
-            const sortedItems = items.sort((a, b) => (b.is_online === a.is_online) ? 0 : b.is_online ? 1 : -1);
+        if (safeSelect('dash-total-payroll')) safeSelect('dash-total-payroll').textContent = `₹${stats.monthly_payroll.toLocaleString()}`;
+        if (safeSelect('dash-online-count')) safeSelect('dash-online-count').textContent = stats.online_count;
+        if (safeSelect('dash-deliveries-today')) safeSelect('dash-deliveries-today').textContent = `${stats.deliveries_today} Orders`;
+        if (safeSelect('dash-assigned-pending')) safeSelect('dash-assigned-pending').textContent = `${stats.assigned_pending} Orders`;
 
-            list.innerHTML = sortedItems.map(item => {
-                const onlineStatus = item.is_online ? '<span class="status-dot online"></span>' : '<span class="status-dot offline"></span>';
-                const statusText = item.is_online ? '<span style="color:#22c55e; font-size: 0.75rem;">Online</span>' : '<span style="color:#ef4444; font-size: 0.75rem;">Offline</span>';
+        if (safeSelect('admin-dash-leaves')) safeSelect('admin-dash-leaves').textContent = stats.pending_leaves;
+        if (safeSelect('admin-dash-expenses')) safeSelect('admin-dash-expenses').textContent = stats.pending_expenses;
 
-                return `
-                    <div class="item-card employee-status-card" style="cursor: pointer; border-left: 4px solid ${item.is_online ? '#22c55e' : '#ef4444'};" onclick="viewEmployeeHistory(${item.user_id}, '${item.name}')">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div>${onlineStatus} <strong>${item.name}</strong> <span style="margin-left:0.5rem;">${statusText}</span></div>
-                            <button onclick="event.stopPropagation(); openAssignModal(${item.user_id}, '${item.name}')" class="badge badge-pending">+ Assign Order</button>
-                        </div>
-                        <div class="stat-grid" style="margin-top:0.5rem">
-                            <div class="stat-item"><p>Completed</p><p>${item.orders_completed || 0}</p></div>
-                            <div class="stat-item"><p>Active</p><p style="color:var(--primary-color)">${item.assigned_orders || 0}</p></div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        const updateTimeEl = safeSelect('last-update-time');
-        if (updateTimeEl) updateTimeEl.textContent = 'Updated at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-
-    // Fetch Pending Leaves for Admin
-    const leavesRes = await apiCall('/leave/all-pending');
-    if (leavesRes.ok) {
-        const leaves = await leavesRes.json();
-
-        const badge = safeSelect('admin-leave-badge');
-        if (badge) {
-            badge.textContent = leaves.length;
-            badge.classList.toggle('hidden', leaves.length === 0);
-        }
-
-        const list = safeSelect('admin-leave-approval-list');
-        if (list) {
-            if (leaves.length === 0) {
-                list.innerHTML = '<p class="text-center" style="font-size:0.8rem; color:var(--text-secondary);">No pending leaves</p>';
-            } else {
-                list.innerHTML = leaves.map(val => `
-                    <div class="item-card">
-                        <div style="display:flex; justify-content:space-between;">
-                            <strong>${val.user_name}</strong>
-                            <span class="badge badge-pending">${val.leave_type}</span>
-                        </div>
-                        <p style="font-size:0.8rem; margin:0.4rem 0;">${new Date(val.start_date).toLocaleDateString()} to ${new Date(val.end_date).toLocaleDateString()}</p>
-                        <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom: 0.5rem;">${val.reason}</p>
-                        <div style="display:flex; gap: 0.5rem;">
-                            <button onclick="approveLeave(${val.id}, 'approved')" class="btn btn-success" style="flex:1; padding:0.4rem; font-size:0.75rem;">Approve</button>
-                            <button onclick="approveLeave(${val.id}, 'rejected')" class="btn btn-danger" style="flex:1; padding:0.4rem; font-size:0.75rem;">Reject</button>
-                        </div>
-                    </div>
-                `).join('');
-            }
+        if (safeSelect('admin-last-sync')) {
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            safeSelect('admin-last-sync').textContent = `Sync: ${timeStr}`;
         }
     }
 
-    // Fetch Pending Expenses for Admin
-    const expensesRes = await apiCall('/expense/all-pending');
-    if (expensesRes.ok) {
-        const expenses = await expensesRes.json();
+    // Fetch counts for badges
+    fetchAdminBadges();
+}
 
-        const badge = safeSelect('admin-expense-badge');
-        if (badge) {
-            badge.textContent = expenses.length;
-            badge.classList.toggle('hidden', expenses.length === 0);
-        }
+async function fetchAdminBadges() {
+    const leaveRes = await apiCall('/leave/all-pending');
+    const expenseRes = await apiCall('/expense/all-pending');
+    const notifRes = await apiCall('/notifications');
 
-        const list = safeSelect('admin-expense-list');
-        if (list) {
-            if (expenses.length === 0) {
-                list.innerHTML = '<p class="text-center" style="font-size:0.8rem; color:var(--text-secondary);">No pending expenses</p>';
-            } else {
-                list.innerHTML = expenses.map(val => `
-                    <div class="item-card">
-                        <div style="display:flex; justify-content:space-between;">
-                            <strong>${val.user_name}</strong>
-                            <strong>₹${val.amount}</strong>
-                        </div>
-                        <p style="font-size:0.8rem; margin:0.4rem 0;">${val.description}</p>
-                        <div style="display:flex; gap: 0.5rem;">
-                            <button onclick="approveExpense(${val.id}, 'approved')" class="btn btn-success" style="flex:1; padding:0.4rem; font-size:0.75rem;">Approve</button>
-                            <button onclick="approveExpense(${val.id}, 'rejected')" class="btn btn-danger" style="flex:1; padding:0.4rem; font-size:0.75rem;">Reject</button>
-                        </div>
-                    </div>
-                `).join('');
-            }
-        }
+    let totalRequests = 0;
+    if (leaveRes.ok) {
+        const leaves = await leaveRes.json();
+        totalRequests += leaves.length;
+        if (safeSelect('admin-dash-leaves')) safeSelect('admin-dash-leaves').textContent = leaves.length;
+    }
+    if (expenseRes.ok) {
+        const expenses = await expenseRes.json();
+        totalRequests += expenses.length;
+        if (safeSelect('admin-dash-expenses')) safeSelect('admin-dash-expenses').textContent = expenses.length;
+    }
+
+    updateAdminBadge('badge-admin-requests', totalRequests);
+
+    if (notifRes.ok) {
+        const notifs = await notifRes.json();
+        updateAdminBadge('badge-admin-notif', notifs.length);
     }
 }
 
-// Global variable for tracking the modal's employee ID
-let currentHistUserId = null;
-
-async function approveLeave(id, status) {
-    if (!confirm(`Are you sure you want to ${status} this leave?`)) return;
-    const res = await apiCall(`/leave/approve/${id}`, 'POST', { status });
-    if (res.ok) {
-        alert(`Leave ${status} successfully.`);
-        fetchAdminData();
-    } else {
-        alert('Failed to update leave request.');
+function updateAdminBadge(id, count) {
+    const el = safeSelect(id);
+    if (el) {
+        el.textContent = count;
+        el.classList.toggle('hidden', count === 0);
     }
 }
 
-async function approveExpense(id, status) {
-    if (!confirm(`Are you sure you want to ${status} this expense?`)) return;
-    const res = await apiCall(`/expense/approve/${id}`, 'POST', { status });
+async function fetchAdminOrders() {
+    const res = await apiCall('/admin/employee-details');
     if (res.ok) {
-        alert(`Expense ${status} successfully.`);
-        fetchAdminData();
-    } else {
-        alert('Failed to update expense claim.');
-    }
-}
-
-async function viewEmployeeHistory(id, name) {
-    currentHistUserId = id;
-    const res = await apiCall(`/admin/employee/${id}/history`);
-    if (res.ok) {
-        const data = await res.json();
-        const modal = safeSelect('employee-details-modal');
-        const nameEl = safeSelect('hist-emp-name');
-        const joinedEl = safeSelect('hist-emp-joined');
-        const timeline = safeSelect('hist-timeline-list');
-
-        nameEl.textContent = name;
-        joinedEl.textContent = `Joined: ${new Date(data.user.created_at).toLocaleDateString()}`;
-
-        // Build timeline
-        let events = [];
-
-        data.attendances.forEach(a => {
-            events.push({ time: new Date(a.check_in), label: 'Checked In', type: 'attendance', detail: a.office_name });
-            if (a.check_out) events.push({ time: new Date(a.check_out), label: 'Checked Out', type: 'attendance', detail: '' });
-        });
-
-        data.breaks.forEach(b => {
-            events.push({ time: new Date(b.start_time), label: `Started Break (${b.break_type})`, type: 'break', detail: '' });
-            if (b.end_time) events.push({ time: new Date(b.end_time), label: `Ended Break`, type: 'break', detail: `${b.duration_minutes} min` });
-        });
-
-        data.orders.forEach(o => {
-            if (o.assigned_at) events.push({ time: new Date(o.assigned_at), label: 'Order Assigned', type: 'order', detail: o.title });
-            if (o.completed_at) events.push({ time: new Date(o.completed_at), label: 'Order Delivered', type: 'order', detail: `Dist: ${o.distance_km}km` });
-        });
-
-        // Sort descending
-        events.sort((a, b) => b.time - a.time);
-
-        if (events.length === 0) {
-            timeline.innerHTML = '<p style="text-align:center; font-size:0.8rem; color:var(--text-secondary);">No activity found</p>';
-        } else {
-            timeline.innerHTML = events.map(e => `
-                <div style="padding-left: 1rem; border-left: 2px solid var(--border-color); position: relative;">
-                    <div style="position: absolute; left: -5px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--primary-color);"></div>
-                    <p style="margin: 0; font-size: 0.75rem; color: var(--text-secondary);">${e.time.toLocaleDateString()} ${e.time.toLocaleTimeString()}</p>
-                    <p style="margin: 0.2rem 0; font-weight: 500;">${e.label}</p>
-                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-secondary);">${e.detail}</p>
+        const items = await res.json();
+        const list = safeSelect('admin-orders-employee-list');
+        if (list) {
+            list.innerHTML = items.map(item => `
+                <div class="item-card employee-status-card" style="border-left: 4px solid ${item.assigned_orders > 0 ? 'var(--primary-color)' : 'var(--border-color)'}; opacity: ${item.is_online ? 1 : 0.6}">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <strong style="font-size:1.1rem;">${item.name}</strong>
+                            <p style="font-size:0.75rem; color:var(--text-secondary);">${item.is_online ? '🟢 Online' : '⚪ Offline'}</p>
+                        </div>
+                        <button onclick="openAssignModal(${item.user_id}, '${item.name}', ${item.is_online})" 
+                                class="btn ${item.is_online ? 'btn-primary' : 'btn-disabled'}" 
+                                style="width:auto; padding: 0.5rem 1rem; font-size: 0.75rem;"
+                                ${item.is_online ? '' : 'disabled'}>+ Assign Order</button>
+                    </div>
+                    <div class="stat-grid" style="margin-top: 1rem; background: rgba(255,255,255,0.03); border-radius: 8px; padding: 0.5rem;">
+                        <div style="text-align:center;"><p style="font-size:0.65rem; color:var(--text-secondary);">Active</p><p style="font-weight:700;">${item.assigned_orders}</p></div>
+                        <div style="text-align:center;"><p style="font-size:0.65rem; color:var(--text-secondary);">Today</p><p style="font-weight:700;">${item.orders_completed}</p></div>
+                    </div>
                 </div>
             `).join('');
         }
-
-        modal.classList.remove('hidden');
-    } else {
-        alert("Failed to load employee history.");
     }
 }
 
-const btnCloseHist = safeSelect('btn-close-hist-modal');
-if (btnCloseHist) {
-    btnCloseHist.addEventListener('click', () => {
-        safeSelect('employee-details-modal').classList.add('hidden');
-    });
-}
-
-const btnHistAssign = safeSelect('btn-hist-assign');
-if (btnHistAssign) {
-    btnHistAssign.addEventListener('click', () => {
-        safeSelect('employee-details-modal').classList.add('hidden');
-        openAssignModal(currentHistUserId, safeSelect('hist-emp-name').textContent);
-    });
-}
-
-const btnHistRemove = safeSelect('btn-hist-remove');
-if (btnHistRemove) {
-    btnHistRemove.addEventListener('click', async () => {
-        if (!confirm("Are you absolutely sure you want to remove this employee? This action cannot be undone.")) return;
-
-        const res = await apiCall(`/admin/remove-user/${currentHistUserId}`, 'DELETE');
-        if (res.ok) {
-            alert('Employee removed permanently.');
-            safeSelect('employee-details-modal').classList.add('hidden');
-            fetchAdminData();
-        } else {
-            const d = await res.json();
-            alert(d.msg || 'Removal failed');
+async function fetchAdminLeaves() {
+    const res = await apiCall('/leave/all-pending');
+    if (res.ok) {
+        const items = await res.json();
+        const list = safeSelect('admin-leave-list-container');
+        if (list) {
+            if (items.length === 0) {
+                list.innerHTML = '<p style="text-align:center; padding:2rem; color:var(--text-secondary);">No pending leave requests.</p>';
+            } else {
+                list.innerHTML = items.map(item => `
+                    <div class="item-card" style="border-left: 4px solid var(--accent-warning);">
+                        <div style="display:flex; justify-content:space-between;">
+                            <div>
+                                <strong style="font-size: 1rem;">${item.user_name}</strong>
+                                <p style="font-size: 0.75rem; color: var(--accent-warning);">Requested ${item.leave_type}</p>
+                            </div>
+                            <span class="badge badge-pending">Pending</span>
+                        </div>
+                        <div style="margin: 1rem 0; font-size: 0.85rem;">
+                             <p>📅 <strong>${new Date(item.start_date).toLocaleDateString()} to ${new Date(item.end_date).toLocaleDateString()}</strong></p>
+                             <p style="margin-top:0.4rem; opacity: 0.8;">"${item.reason}"</p>
+                        </div>
+                        <div style="display:flex; gap: 0.75rem;">
+                            <button onclick="handleLeave(${item.id}, 'approved')" class="btn btn-success" style="flex:1; padding: 0.5rem; font-size: 0.8rem;">Approve</button>
+                            <button onclick="handleLeave(${item.id}, 'rejected')" class="btn btn-danger" style="flex:1; padding: 0.5rem; font-size: 0.8rem;">Reject</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
         }
-    });
+        if (safeSelect('admin-leave-notif-count')) safeSelect('admin-leave-notif-count').textContent = `${items.length} Pending`;
+    }
 }
 
+async function handleLeave(id, status) {
+    if (!confirm(`Are you sure you want to ${status} this leave?`)) return;
+    const res = await apiCall(`/leave/approve/${id}`, 'POST', { status });
+    if (res.ok) {
+        alert(`Leave ${status} successfully!`);
+        fetchAdminLeaves();
+        fetchAdminBadges();
+    }
+}
+
+async function fetchAdminExpenses() {
+    const res = await apiCall('/expense/all-pending');
+    if (res.ok) {
+        const items = await res.json();
+        const list = safeSelect('admin-expense-list-container');
+        if (list) {
+            if (items.length === 0) {
+                list.innerHTML = '<p style="text-align:center; padding:2rem; color:var(--text-secondary);">No pending expense claims.</p>';
+            } else {
+                list.innerHTML = items.map(item => `
+                    <div class="item-card" style="border-left: 4px solid var(--accent-danger);">
+                        <div style="display:flex; justify-content:space-between;">
+                            <div>
+                                <strong style="font-size: 1.1rem; color: var(--accent-success);">₹${item.amount}</strong>
+                                <p style="font-size: 0.85rem; font-weight: 600;">${item.user_name}</p>
+                            </div>
+                            <span class="badge badge-pending">Claim</span>
+                        </div>
+                        <p style="margin: 0.75rem 0; font-size: 0.85rem; opacity: 0.9;">${item.description}</p>
+                        <div style="display:flex; gap: 0.75rem; margin-top: 1rem;">
+                            <button onclick="handleExpense(${item.id}, 'approved')" class="btn btn-success" style="flex:1; padding: 0.5rem; font-size: 0.8rem;">Approve Pay</button>
+                            <button onclick="handleExpense(${item.id}, 'rejected')" class="btn btn-danger" style="flex:1; padding: 0.5rem; font-size: 0.8rem;">Reject</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+        if (safeSelect('admin-expense-notif-count')) safeSelect('admin-expense-notif-count').textContent = `${items.length} Pending`;
+    }
+}
+
+async function handleExpense(id, status) {
+    if (!confirm(`Are you sure you want to ${status} this expense?`)) return;
+    const res = await apiCall(`/expense/approve/${id}`, 'POST', { status });
+    if (res.ok) {
+        alert(`Expense ${status} successfully!`);
+        fetchAdminRequests();
+        fetchAdminBadges();
+    }
+}
+
+// Consolidated Requests Logic
+async function fetchAdminRequests() {
+    const res = await apiCall(currentRequestType === 'leaves' ? '/leave/all-pending' : '/expense/all-pending');
+    if (res.ok) {
+        const items = await res.json();
+        const list = safeSelect('admin-requests-list-container');
+        if (list) {
+            if (items.length === 0) {
+                list.innerHTML = `<p style="text-align:center; padding:2rem; color:var(--text-secondary);">No pending ${currentRequestType} requests.</p>`;
+            } else {
+                if (currentRequestType === 'leaves') {
+                    list.innerHTML = items.map(item => `
+                        <div class="item-card" style="border-left: 4px solid var(--accent-warning);">
+                            <div style="display:flex; justify-content:space-between;">
+                                <div>
+                                    <strong style="font-size: 1rem;">${item.user_name}</strong>
+                                    <p style="font-size: 0.75rem; color: var(--accent-warning);">Requested ${item.leave_type}</p>
+                                </div>
+                                <span class="badge badge-pending">Pending</span>
+                            </div>
+                            <div style="margin: 1rem 0; font-size: 0.85rem;">
+                                 <p>📅 <strong>${new Date(item.start_date).toLocaleDateString()} to ${new Date(item.end_date).toLocaleDateString()}</strong></p>
+                                 <p style="margin-top:0.4rem; opacity: 0.8;">"${item.reason}"</p>
+                            </div>
+                            <div style="display:flex; gap: 0.75rem;">
+                                <button onclick="handleLeave(${item.id}, 'approved')" class="btn btn-success" style="flex:1; padding: 0.4rem; font-size: 0.75rem;">Approve</button>
+                                <button onclick="handleLeave(${item.id}, 'rejected')" class="btn btn-danger" style="flex:1; padding: 0.4rem; font-size: 0.75rem;">Reject</button>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = items.map(item => `
+                        <div class="item-card" style="border-left: 4px solid var(--accent-danger);">
+                            <div style="display:flex; justify-content:space-between;">
+                                <div>
+                                    <strong style="font-size: 1.1rem; color: var(--accent-success);">₹${item.amount}</strong>
+                                    <p style="font-size: 0.85rem; font-weight: 600;">${item.user_name}</p>
+                                </div>
+                                <span class="badge badge-pending">Claim</span>
+                            </div>
+                            <p style="margin: 0.75rem 0; font-size: 0.85rem; opacity: 0.9;">${item.description}</p>
+                            <div style="display:flex; gap: 0.75rem;">
+                                <button onclick="handleExpense(${item.id}, 'approved')" class="btn btn-success" style="flex:1; padding: 0.4rem; font-size: 0.75rem;">Approve Pay</button>
+                                <button onclick="handleExpense(${item.id}, 'rejected')" class="btn btn-danger" style="flex:1; padding: 0.4rem; font-size: 0.75rem;">Reject</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            }
+        }
+        fetchAdminBadges();
+    }
+}
+
+// Employee Management Logic
+async function fetchAdminEmployees() {
+    const res = await apiCall('/admin/employee-details');
+    if (res.ok) {
+        const items = await res.json();
+        const list = safeSelect('admin-employees-list');
+        if (list) {
+            list.innerHTML = items.map(item => `
+                <div class="item-card" style="padding: 1rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div onclick="openEmployeeHistory(${item.user_id}, ${item.is_online})" style="cursor:pointer; flex: 1;">
+                            <strong>${item.name}</strong>
+                            <p style="font-size:0.7rem; color:var(--text-secondary);">${item.is_online ? '🟢 Online' : '⚪ Offline'}</p>
+                        </div>
+                        <button onclick="openEditEmployeeModal(${item.user_id}, '${item.name}', '${item.is_online}')" 
+                                class="btn" style="width:auto; padding: 0.4rem 0.8rem; font-size: 0.7rem; background: var(--bg-secondary); color: var(--primary-color);">
+                            Management
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+    }
+}
+
+async function openEditEmployeeModal(userId, name, isOnline) {
+    const res = await apiCall(`/admin/employee/${userId}/history`);
+    if (res.ok) {
+        const data = await res.json();
+        const user = data.user;
+        selectedUserId = userId;
+
+        safeSelect('edit-emp-name').value = user.name;
+        safeSelect('edit-emp-email').value = user.email;
+        safeSelect('edit-emp-salary').value = user.salary;
+        safeSelect('edit-emp-leave').value = user.leave_balance;
+
+        safeSelect('edit-employee-modal').classList.remove('hidden');
+    }
+}
+
+// Attach listeners for Edit Modal
+const btnCancelEditEmp = safeSelect('btn-cancel-edit-emp');
+if (btnCancelEditEmp) btnCancelEditEmp.addEventListener('click', () => {
+    safeSelect('edit-employee-modal').classList.add('hidden');
+});
+
+const editForm = safeSelect('edit-employee-form');
+if (editForm) editForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = safeSelect('edit-emp-name').value;
+    const email = safeSelect('edit-emp-email').value;
+    const salary = safeSelect('edit-emp-salary').value;
+    const leave_balance = safeSelect('edit-emp-leave').value;
+
+    const res = await apiCall(`/admin/update-user/${selectedUserId}`, 'PUT', { name, email, salary, leave_balance });
+    if (res.ok) {
+        alert('Employee Updated Successfully!');
+        safeSelect('edit-employee-modal').classList.add('hidden');
+        fetchAdminEmployees();
+    }
+});
+
+// Attach Request Filter listeners
+const btnFilterL = safeSelect('btn-filter-leaves');
+const btnFilterE = safeSelect('btn-filter-expenses');
+if (btnFilterL && btnFilterE) {
+    btnFilterL.addEventListener('click', () => {
+        currentRequestType = 'leaves';
+        btnFilterL.style.background = 'var(--primary-color)';
+        btnFilterL.style.color = 'white';
+        btnFilterE.style.background = 'none';
+        btnFilterE.style.color = 'var(--text-secondary)';
+        fetchAdminRequests();
+    });
+    btnFilterE.addEventListener('click', () => {
+        currentRequestType = 'expenses';
+        btnFilterE.style.background = 'var(--primary-color)';
+        btnFilterE.style.color = 'white';
+        btnFilterL.style.background = 'none';
+        btnFilterL.style.color = 'var(--text-secondary)';
+        fetchAdminRequests();
+    });
+}
 
 // Notifications Logic
 async function fetchNotifications() {
@@ -915,19 +1100,19 @@ async function fetchNotifications() {
 
         // Admin View: Detailed List & Badge
         if (userData && userData.role === 'admin') {
-            renderNotifications(data, 'notifications-list-admin');
-            const badge = safeSelect('admin-notif-badge');
-            if (badge) {
-                badge.textContent = data.length;
-                badge.classList.toggle('hidden', data.length === 0);
-            }
+            const unread = data.filter(n => !n.is_read);
+            const read = data.filter(n => n.is_read);
+
+            renderNotifications(unread, 'admin-notifications-list-main');
+            renderNotifications(read, 'admin-notifications-history-list');
+            fetchAdminBadges();
         }
 
         // Employee View: System-Level Push Notification
         else {
             if (data.length > 0) {
-                const latest = data[0];
-                if (latest.id > lastNotifId) {
+                const latest = data.filter(n => !n.is_read)[0];
+                if (latest && latest.id > lastNotifId) {
                     if (Notification.permission === "granted") {
                         new Notification("Workforce Pro Alert", {
                             body: latest.message,
@@ -962,7 +1147,11 @@ function renderNotifications(items, listId) {
 
 
 // Modals
-function openAssignModal(id, name) {
+function openAssignModal(id, name, isOnline) {
+    if (isOnline === false) {
+        alert(`${name} is currently offline and cannot be assigned new orders.`);
+        return;
+    }
     currentAssignUserId = id;
     const nameEl = safeSelect('assign-agent-name');
     if (nameEl) nameEl.textContent = `Assigning to: ${name}`;
@@ -986,7 +1175,8 @@ if (assignF) assignF.addEventListener('submit', async (e) => {
         alert('Order Assigned to Employee!');
         safeSelect('assign-modal').classList.add('hidden');
         assignF.reset();
-        fetchAdminData();
+        fetchAdminOrders();
+        fetchAdminDash();
         fetchNotifications();
     } else {
         const data = await res.json();
@@ -1109,30 +1299,6 @@ if (btnCheckOut) {
 }
 
 
-// Leave Submission Logic
-const leaveF = safeSelect('leave-form');
-if (leaveF) {
-    leaveF.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const leave_type = safeSelect('leave-type').value;
-        const start_date = safeSelect('leave-start').value;
-        const end_date = safeSelect('leave-end').value;
-        const reason = safeSelect('leave-reason').value;
-
-        const body = { leave_type, start_date, end_date, reason };
-        const res = await apiCall('/leave/apply', 'POST', body);
-
-        if (res.ok) {
-            alert('Leave application submitted successfully!');
-            leaveF.reset();
-            fetchLeaveData(); // Refresh history
-        } else {
-            const data = await res.json();
-            alert('Error submitting leave: ' + (data.msg || 'Unknown error'));
-        }
-    });
-}
-
 // Expense Claim Submission
 const expenseF = safeSelect('expense-form');
 if (expenseF) {
@@ -1156,27 +1322,118 @@ if (expenseF) {
 }
 
 // User Management
-const addUserF = safeSelect('add-user-form');
-if (addUserF) {
-    addUserF.addEventListener('submit', async (e) => {
+// User Management Main Form
+const addUserFMain = safeSelect('add-user-form-main');
+if (addUserFMain) {
+    addUserFMain.addEventListener('submit', async (e) => {
         e.preventDefault();
         const body = {
-            name: safeSelect('add-user-name').value,
-            email: safeSelect('add-user-email').value,
-            password: safeSelect('add-user-password').value,
-            salary: safeSelect('add-user-salary').value || 30000
+            name: safeSelect('add-user-name-main').value,
+            email: safeSelect('add-user-email-main').value,
+            password: safeSelect('add-user-password-main').value,
+            salary: safeSelect('add-user-salary-main').value || 30000
         };
         const res = await apiCall('/admin/create-user', 'POST', body);
         if (res.ok) {
             alert('Employee account created successfully!');
-            addUserF.reset();
-            fetchAdminData();
+            addUserFMain.reset();
+            fetchAdminDash();
         } else {
             const data = await res.json();
             alert(data.msg || 'Creation failed');
         }
     });
 }
+
+// Employee History Modal Logic
+async function openEmployeeHistory(userId, isOnline) {
+    const res = await apiCall(`/admin/employee/${userId}/history`);
+    if (res.ok) {
+        const data = await res.json();
+        selectedUserId = userId; // for use in modal buttons
+        isSelectedUserOnline = isOnline; // track for assignment check
+
+        safeSelect('hist-emp-name').textContent = data.user.name;
+        safeSelect('hist-emp-joined').textContent = `Joined: ${new Date(data.user.created_at).toLocaleDateString()}`;
+
+        // Reconstruct Timeline
+        const timeline = [];
+        data.attendances.forEach(a => timeline.push({ type: 'attendance', date: a.check_in, data: a }));
+        data.orders.forEach(o => timeline.push({ type: 'order', date: o.created_at, data: o }));
+        data.leaves.forEach(l => timeline.push({ type: 'leave', date: l.created_at, data: l }));
+        data.breaks.forEach(b => timeline.push({ type: 'break', date: b.start_time, data: b }));
+
+        timeline.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        const list = safeSelect('hist-timeline-list');
+        if (list) {
+            if (timeline.length === 0) {
+                list.innerHTML = '<p style="text-align:center; padding:1rem; color:var(--text-secondary);">No activity recorded yet.</p>';
+            } else {
+                list.innerHTML = timeline.map(item => {
+                    let icon = '📝';
+                    let title = item.type.toUpperCase();
+                    let desc = '';
+
+                    if (item.type === 'attendance') {
+                        icon = '🕒';
+                        title = 'Attendance';
+                        desc = item.data.check_out ? `Worked from ${new Date(item.data.check_in).toLocaleTimeString()} to ${new Date(item.data.check_out).toLocaleTimeString()}` : `Checked in at ${new Date(item.data.check_in).toLocaleTimeString()}`;
+                    } else if (item.type === 'order') {
+                        icon = '📦';
+                        title = `Order: ${item.data.title}`;
+                        desc = `Status: ${item.data.status.replace(/_/g, ' ')}`;
+                    } else if (item.type === 'leave') {
+                        icon = '📅';
+                        title = `Leave: ${item.data.leave_type}`;
+                        desc = `${item.data.status} - "${item.data.reason}"`;
+                    } else if (item.type === 'break') {
+                        icon = '☕';
+                        title = 'Break';
+                        desc = `${item.data.break_type} started at ${new Date(item.data.start_time).toLocaleTimeString()}`;
+                    }
+
+                    return `
+                        <div class="history-item" style="display:flex; gap:1rem; align-items:start; padding:1rem; background:rgba(255,255,255,0.02); border-radius:12px; border:1px solid var(--border-color);">
+                            <div style="font-size:1.5rem;">${icon}</div>
+                            <div>
+                                <strong style="font-size:0.9rem;">${title}</strong>
+                                <p style="font-size:0.8rem; margin-top:0.25rem; opacity:0.8;">${desc}</p>
+                                <p style="font-size:0.7rem; color:var(--text-secondary); margin-top:0.25rem;">${new Date(item.date).toLocaleString()}</p>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        safeSelect('employee-details-modal').classList.remove('hidden');
+    }
+}
+
+// Modal Button Handlers
+const btnCloseHist = safeSelect('btn-close-hist-modal');
+if (btnCloseHist) btnCloseHist.addEventListener('click', () => safeSelect('employee-details-modal').classList.add('hidden'));
+
+const btnHistAssign = safeSelect('btn-hist-assign');
+if (btnHistAssign) btnHistAssign.addEventListener('click', () => {
+    safeSelect('employee-details-modal').classList.add('hidden');
+    openAssignModal(selectedUserId, safeSelect('hist-emp-name').textContent, isSelectedUserOnline);
+});
+
+const btnHistRemove = safeSelect('btn-hist-remove');
+if (btnHistRemove) btnHistRemove.addEventListener('click', async () => {
+    if (!confirm('CRITICAL: Are you sure you want to PERMANENTLY remove this employee and all their data?')) return;
+    const res = await apiCall(`/admin/remove-user/${selectedUserId}`, 'DELETE');
+    if (res.ok) {
+        alert('Employee removed successfully.');
+        safeSelect('employee-details-modal').classList.add('hidden');
+        fetchAdminDash();
+    } else {
+        const d = await res.json();
+        alert(d.msg || 'Removal failed');
+    }
+});
 
 // Auth form
 const loginF = safeSelect('login-form');
@@ -1206,6 +1463,30 @@ if (loginF) loginF.addEventListener('submit', async (e) => {
     }
 });
 
+// Sign Out Logic for Admin Settings
+const btnLogoutAdminS = safeSelect('btn-logout-admin-settings');
+if (btnLogoutAdminS) {
+    btnLogoutAdminS.addEventListener('click', () => {
+        if (confirm('Are you sure you want to sign out?')) {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('userData');
+            window.location.reload();
+        }
+    });
+}
+
+// Mark All Read Logic
+const btnMarkRead = safeSelect('btn-mark-all-read');
+if (btnMarkRead) {
+    btnMarkRead.addEventListener('click', async () => {
+        const res = await apiCall('/notifications/mark-read', 'POST');
+        if (res.ok) {
+            fetchNotifications();
+            alert('All notifications marked as read.');
+        }
+    });
+}
+
 // Clock
 setInterval(() => {
     const timeEl = safeSelect('current-time');
@@ -1214,38 +1495,23 @@ setInterval(() => {
 
 // Set Globals
 window.openAssignModal = openAssignModal;
+window.handleLeave = handleLeave;
+window.handleExpense = handleExpense;
+window.fetchAdminDash = fetchAdminDash;
+window.fetchAdminOrders = fetchAdminOrders;
+window.openEmployeeHistory = openEmployeeHistory;
+window.toggleTheme = toggleTheme;
 
-// Workforce Pro App Ready
+// Initial Theme Check
+initTheme();
+
+console.log("Workforce Pro App v2.2 Loaded");
 
 // Initial Navigation - Moved to end to avoid TDZ errors
 if (authToken && userData) {
     showApp();
-    // Fast Polling for Data Sync
-    setInterval(() => {
-        fetchNotifications();
-        if (userData && userData.role === 'admin') {
-            const adminScreen = safeSelect('admin-screen');
-            if (adminScreen && !adminScreen.classList.contains('hidden')) {
-                fetchAdminData(); // Keep admin dashboard actively synced
-            }
-        } else {
-            const homeScreen = safeSelect('home-screen');
-            if (homeScreen && !homeScreen.classList.contains('hidden')) {
-                fetchActiveOrders(); // Keep employee workspace actively synced
-            }
-
-            // Poll active extraneous screens for dynamic approval updates
-            const leaveScreen = safeSelect('leave-screen');
-            if (leaveScreen && !leaveScreen.classList.contains('hidden')) {
-                fetchLeaveData();
-            }
-
-            const expenseScreen = safeSelect('expense-screen');
-            if (expenseScreen && !expenseScreen.classList.contains('hidden')) {
-                fetchExpenseData();
-            }
-        }
-    }, 5000); // Poll every 5 seconds for responsive sync
+    // Start Polling for Notifications
+    setInterval(fetchNotifications, 15000); // Every 15 seconds
 }
 
 
